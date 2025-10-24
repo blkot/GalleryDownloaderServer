@@ -2,6 +2,12 @@
 
 A FastAPI-based service that queues gallery-dl jobs and tracks their status via a Redis-backed worker. Jobs are deduplicated by URL and can be organized under a user-supplied post title folder. Downloaded files are placed under `storage_root/<post_title>/<domain>/<resource-id>/…`.
 
+### References
+
+- [gallery-dl](https://github.com/mikf/gallery-dl) for multi-site download support.
+- [Redis Queue (RQ)](https://github.com/rq/rq) powering background job processing.
+- Inspired by lightweight FastAPI queue projects such as [rq-fastapi-example](https://github.com/pgjones/rq-example) and containerized downloader setups shared in the gallery-dl community.
+
 ### Local Development
 
 1. Install [uv](https://github.com/astral-sh/uv) and ensure Python 3.13 is available.
@@ -75,3 +81,7 @@ The API is served at `http://localhost:8080`. Add `Authorization: Bearer <token>
 ### Documentation
 
 See `docs/project-design.md` for the detailed system design and implementation roadmap.
+
+### License
+
+This project is released under the [MIT License](LICENSE). It builds on open-source components such as gallery-dl (MIT) and RQ (BSD).
