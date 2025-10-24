@@ -1,0 +1,33 @@
+# Python artifacts
+__pycache__/
+*.py[cod]
+*.pyo
+*.so
+*.egg-info/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# UV and pip caches
+.uv-cache/
+.pytest_cache/
+.ruff_cache/
+
+# Local data/logs
+data/
+logs/
+
+# OS cruft
+.DS_Store
+Thumbs.db
+
+# Editor configs
+.vscode/
+.idea/
+
+# Generated files
+docs/__pycache__/
+
+.env

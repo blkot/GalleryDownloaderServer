@@ -1,0 +1,15 @@
+[project]
+name = "gallerydownloaderserver"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "fastapi>=0.111.0",
+    "uvicorn[standard]>=0.30.0",
+    "redis>=5.0.0",
+    "rq>=1.16.0",
+    "sqlmodel>=0.0.16",
+    "pydantic-settings>=2.2.1",
+    "gallery-dl>=1.26.0",
+]
