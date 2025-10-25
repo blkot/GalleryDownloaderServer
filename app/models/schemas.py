@@ -44,3 +44,19 @@ class DownloadRead(BaseModel):
     finished_at: Optional[datetime] = None
     failure_reason: Optional[str] = None
     items: List[DownloadItemRead] = Field(default_factory=list)
+
+
+class RuntimeSettingsRead(BaseModel):
+    storage_root: str
+    gallery_dl_extra_args: Optional[str] = None
+    job_timeout_seconds: Optional[int] = None
+
+
+class RuntimeSettingsUpdate(BaseModel):
+    storage_root: Optional[str] = Field(None, description="Override storage root path for new downloads.")
+    gallery_dl_extra_args: Optional[str] = Field(
+        None, description="Additional gallery-dl CLI arguments passed for new downloads."
+    )
+    job_timeout_seconds: Optional[int] = Field(
+        None, description="Per-job timeout in seconds (0 disables job timeouts)."
+    )

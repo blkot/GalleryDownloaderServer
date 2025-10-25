@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Gallery Downloader Settings</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+      }
+      body {
+        margin: 0;
+        padding: 24px;
+        background-color: #0f172a;
+        color: #e2e8f0;
+        min-height: 100vh;
+        display: flex;
+        justify-content: center;
+      }
+      .card {
+        width: 100%;
+        max-width: 640px;
+        background: rgba(15, 23, 42, 0.85);
+        border-radius: 16px;
+        padding: 24px 28px;
+        box-shadow: 0 16px 40px rgba(15, 23, 42, 0.6);
+        backdrop-filter: blur(6px);
+      }
+      h1 {
+        font-size: 1.6rem;
+        margin-bottom: 0.4rem;
+        font-weight: 600;
+      }
+      p.subtitle {
+        margin-top: 0;
+        margin-bottom: 1.5rem;
+        color: #94a3b8;
+        font-size: 0.95rem;
+      }
+      label {
+        display: block;
+        font-weight: 500;
+        margin-bottom: 0.35rem;
+      }
+      input,
+      textarea {
+        width: 100%;
+        padding: 0.65rem 0.75rem;
+        border-radius: 10px;
+        border: 1px solid rgba(148, 163, 184, 0.4);
+        background: rgba(15, 23, 42, 0.7);
+        color: inherit;
+        font-size: 0.95rem;
+        transition: border-color 0.2s ease, box-shadow 0.2s ease;
+      }
+      input:focus,
+      textarea:focus {
+        outline: none;
+        border-color: #38bdf8;
+        box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.2);
+        background: rgba(15, 23, 42, 0.85);
+      }
+      textarea {
+        resize: vertical;
+        min-height: 80px;
+      }
+      .field {
+        margin-bottom: 1.2rem;
+      }
+      .actions {
+        display: flex;
+        gap: 0.75rem;
+        margin-top: 1.5rem;
+      }
+      button {
+        padding: 0.65rem 1.1rem;
+        border-radius: 10px;
+        border: none;
+        cursor: pointer;
+        font-weight: 600;
+        font-size: 0.95rem;
+        letter-spacing: 0.01em;
+        transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.2s ease;
+      }
+      button.primary {
+        background: linear-gradient(135deg, #38bdf8, #6366f1);
+        color: #0f172a;
+        box-shadow: 0 10px 22px rgba(99, 102, 241, 0.35);
+      }
+      button.secondary {
+        background: rgba(148, 163, 184, 0.35);
+        color: #f8fafc;
+        border: 1px solid rgba(148, 163, 184, 0.5);
+      }
+      button:hover {
+        transform: translateY(-1px);
+      }
+      button:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+        transform: none;
+        box-shadow: none;
+      }
+      .status {
+        margin-top: 1rem;
+        font-size: 0.9rem;
+        min-height: 1.2rem;
+      }
+      .status.success {
+        color: #4ade80;
+      }
+      .status.error {
+        color: #f87171;
+      }
+      .token-banner {
+        margin-bottom: 1.5rem;
+        padding: 0.75rem 1rem;
+        border-radius: 12px;
+        background: rgba(56, 189, 248, 0.12);
+        border: 1px solid rgba(56, 189, 248, 0.3);
+        display: flex;
+        gap: 0.75rem;
+        align-items: center;
+      }
+      .token-banner input {
+        margin-bottom: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>Gallery Downloader Settings</h1>
+      <p class="subtitle">Update runtime configuration without restarting the container.</p>
+
+      <div class="token-banner">
+        <label style="margin: 0; font-weight: 500;">
+          API Token
+          <input id="token" type="password" placeholder="Bearer token for admin requests" />
+        </label>
+        <button id="storeToken" class="secondary">Use Token</button>
+      </div>
+
+      <form id="settingsForm">
+        <div class="field">
+          <label for="storageRoot">Storage Root</label>
+          <input id="storageRoot" name="storageRoot" type="text" required />
+        </div>
+        <div class="field">
+          <label for="jobTimeout">Job Timeout (seconds, 0 = no timeout)</label>
+          <input id="jobTimeout" name="jobTimeout" type="number" min="0" />
+        </div>
+        <div class="field">
+          <label for="galleryArgs">Gallery-dl extra arguments</label>
+          <textarea
+            id="galleryArgs"
+            name="galleryArgs"
+            placeholder='Example: --write-metadata -o extractor.pixeldrain.wait-min=2'
+          ></textarea>
+        </div>
+        <div class="actions">
+          <button type="submit" class="primary" id="saveButton">Save changes</button>
+          <button type="button" class="secondary" id="reloadButton">Reload values</button>
+        </div>
+        <div id="status" class="status"></div>
+      </form>
+    </div>
+
+    <script>
+      const tokenInput = document.getElementById("token");
+      const storeTokenBtn = document.getElementById("storeToken");
+      const form = document.getElementById("settingsForm");
+      const saveButton = document.getElementById("saveButton");
+      const reloadButton = document.getElementById("reloadButton");
+      const statusEl = document.getElementById("status");
+
+      const storageRootInput = document.getElementById("storageRoot");
+      const jobTimeoutInput = document.getElementById("jobTimeout");
+      const galleryArgsInput = document.getElementById("galleryArgs");
+
+      const TOKEN_KEY = "gdl_admin_token";
+
+      function getToken() {
+        return tokenInput.value.trim();
+      }
+
+      function setStatus(message, kind = "info") {
+        statusEl.textContent = message || "";
+        statusEl.classList.remove("success", "error");
+        if (kind === "success") statusEl.classList.add("success");
+        if (kind === "error") statusEl.classList.add("error");
+      }
+
+      async function fetchSettings() {
+        setStatus("Loading settings…");
+        toggleForm(true);
+        try {
+          const response = await fetch("/settings", {
+            headers: {
+              Authorization: `Bearer ${getToken()}`,
+            },
+          });
+          if (!response.ok) {
+            throw new Error(`Failed to load settings (${response.status})`);
+          }
+          const data = await response.json();
+          storageRootInput.value = data.storage_root || "";
+          jobTimeoutInput.value = data.job_timeout_seconds ?? "";
+          galleryArgsInput.value = data.gallery_dl_extra_args || "";
+          setStatus("Settings loaded.", "success");
+        } catch (error) {
+          console.error(error);
+          setStatus(error.message, "error");
+        } finally {
+          toggleForm(false);
+        }
+      }
+
+      async function updateSettings(payload) {
+        setStatus("Saving…");
+        toggleForm(true);
+        try {
+          const response = await fetch("/settings", {
+            method: "PUT",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${getToken()}`,
+            },
+            body: JSON.stringify(payload),
+          });
+          if (!response.ok) {
+            throw new Error(`Failed to save settings (${response.status})`);
+          }
+          const data = await response.json();
+          storageRootInput.value = data.storage_root || "";
+          jobTimeoutInput.value = data.job_timeout_seconds ?? "";
+          galleryArgsInput.value = data.gallery_dl_extra_args || "";
+          setStatus("Settings updated successfully.", "success");
+        } catch (error) {
+          console.error(error);
+          setStatus(error.message, "error");
+        } finally {
+          toggleForm(false);
+        }
+      }
+
+      function toggleForm(disabled) {
+        saveButton.disabled = disabled;
+        reloadButton.disabled = disabled;
+        storageRootInput.disabled = disabled;
+        jobTimeoutInput.disabled = disabled;
+        galleryArgsInput.disabled = disabled;
+      }
+
+      storeTokenBtn.addEventListener("click", () => {
+        const token = tokenInput.value.trim();
+        if (!token) {
+          alert("Please enter a bearer token.");
+          return;
+        }
+        localStorage.setItem(TOKEN_KEY, token);
+        setStatus("Token stored for this browser session.", "success");
+      });
+
+      form.addEventListener("submit", (event) => {
+        event.preventDefault();
+        if (!getToken()) {
+          alert("Set the API token before saving.");
+          return;
+        }
+        const payload = {
+          storage_root: storageRootInput.value.trim() || null,
+          gallery_dl_extra_args: galleryArgsInput.value.trim() || null,
+          job_timeout_seconds:
+            jobTimeoutInput.value === "" ? null : Number.parseInt(jobTimeoutInput.value, 10),
+        };
+        updateSettings(payload);
+      });
+
+      reloadButton.addEventListener("click", (event) => {
+        event.preventDefault();
+        if (!getToken()) {
+          alert("Set the API token before loading settings.");
+          return;
+        }
+        fetchSettings();
+      });
+
+      whenDocumentReady(() => {
+        const storedToken = localStorage.getItem(TOKEN_KEY);
+        if (storedToken) {
+          tokenInput.value = storedToken;
+        }
+        if (getToken()) {
+          fetchSettings();
+        } else {
+          setStatus("Enter an API token and click “Use Token” to load settings.");
+        }
+      });
+
+      function whenDocumentReady(callback) {
+        if (document.readyState === "loading") {
+          document.addEventListener("DOMContentLoaded", callback, { once: true });
+        } else {
+          callback();
+        }
+      }
+    </script>
+  </body>
+</html>

@@ -56,3 +56,10 @@ class DownloadUrl(SQLModel, table=True):
     url: str = Field(sa_column=Column(String(2048), nullable=False, index=True, unique=True))
 
     download: Optional[Download] = Relationship(back_populates="url_entries")
+
+
+class RuntimeSetting(SQLModel, table=True):
+    """Stores runtime configuration overrides that can be changed via the API."""
+
+    key: str = Field(primary_key=True, max_length=100)
+    value: str = Field(nullable=True)

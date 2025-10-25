@@ -6,11 +6,11 @@ from typing import List, Optional
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response, status
 
 from app.api.security import require_token
-from app.config import settings
 from app.db import session_scope
 from app.models import DownloadCreate, DownloadRead
 from app.queue import get_queue
 from app.repositories.downloads import DownloadRepository
+from app.services.runtime_config import load_runtime_config
 
 router = APIRouter(dependencies=[Depends(require_token)])
 
@@ -62,9 +62,10 @@ async def enqueue_download(
             post_title=payload.post_title,
             requested_at=datetime.utcnow(),
         )
+        runtime = load_runtime_config(session)
 
     queue = get_queue()
-    job_timeout = settings.job_timeout_seconds
+    job_timeout = runtime.job_timeout_seconds
     queue.enqueue(
         "app.worker.process_download",
         download_id=str(download_id),

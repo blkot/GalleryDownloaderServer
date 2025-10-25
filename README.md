@@ -78,6 +78,12 @@ The API is served at `http://localhost:8080`. Add `Authorization: Bearer <token>
 
   Add multiple `url` parameters to send more than one link.
 
+### Runtime Settings Dashboard
+
+- Visit `http://localhost:8080/admin/settings` (or your NAS host) to edit runtime configuration without restarting containers.
+- Provide the same bearer token to load/update values; settings are persisted in SQLite overrides.
+- You can adjust the storage root, gallery-dl extra arguments, and per-job timeout (set `0` to disable the timeout).
+
 ### Documentation
 
 See `docs/project-design.md` for the detailed system design and implementation roadmap.

@@ -1,4 +1,7 @@
+from pathlib import Path
+
 from fastapi import FastAPI
+from fastapi.responses import HTMLResponse
 
 from app.api import api_router
 from app.config import settings
@@ -17,6 +20,12 @@ def create_app() -> FastAPI:
     @app.get("/healthz", tags=["health"])
     async def healthcheck() -> dict[str, str]:
         return {"status": "ok"}
+
+    admin_page = Path(__file__).resolve().parent / "frontend" / "settings.html"
+
+    @app.get("/admin/settings", response_class=HTMLResponse, tags=["settings"])
+    async def settings_dashboard() -> HTMLResponse:
+        return HTMLResponse(admin_page.read_text(encoding="utf-8"))
 
     app.include_router(api_router)
     return app

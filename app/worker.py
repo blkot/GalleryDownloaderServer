@@ -8,15 +8,14 @@ from typing import Iterable, List, Optional
 
 from rq import SimpleWorker, Worker
 
-from app.config import settings
 from app.db import init_db, session_scope
 from app.models.schemas import DownloadStatus
 from app.queue import get_queue
 from app.repositories.downloads import DownloadRepository
 from app.services.download_manager import DownloadManager
+from app.services.runtime_config import load_runtime_config
 
 logger = logging.getLogger(__name__)
-manager = DownloadManager(settings.storage_root)
 
 
 def process_download(*, download_id: str, urls: Iterable[str], post_title: Optional[str] = None) -> None:
@@ -24,8 +23,11 @@ def process_download(*, download_id: str, urls: Iterable[str], post_title: Optio
     download_urls = list(urls)
     current_post_title: Optional[str] = post_title
 
+    runtime = None
+
     with session_scope() as session:
         repo = DownloadRepository(session)
+        runtime = load_runtime_config(session)
         existing = repo.get_entity(identifier)
         if existing is None:
             repo.create(
@@ -45,6 +47,8 @@ def process_download(*, download_id: str, urls: Iterable[str], post_title: Optio
         current_post_title = existing.post_title if existing else post_title
 
     try:
+        extra_args = DownloadManager._parse_extra_args(runtime.gallery_dl_extra_args if runtime else None)
+        manager = DownloadManager(storage_root=runtime.storage_root if runtime else None, extra_args=extra_args)
         result = manager.run(identifier, download_urls, folder_name=current_post_title)
         items_payload: List[dict] = [
             {
