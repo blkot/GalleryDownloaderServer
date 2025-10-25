@@ -1,0 +1,58 @@
+services:
+  api:
+    image: gallery-downloader-api:latest        # load once via `docker load`
+    container_name: gdl_api
+    restart: unless-stopped
+    environment:
+      GDL_API_TOKEN: ${GDL_API_TOKEN:?err}
+      GDL_REDIS_URL: ${GDL_REDIS_URL:?err}
+      GDL_STORAGE_ROOT: ${GDL_STORAGE_ROOT:-/data/downloads}
+      GDL_GALLERY_DL_EXTRA_ARGS: ${GDL_GALLERY_DL_EXTRA_ARGS:-}
+      GDL_JOB_TIMEOUT_SECONDS: ${GDL_JOB_TIMEOUT_SECONDS:-1800}
+    ports:
+      - "8080:8080"
+    volumes:
+      - gallery_data:/data            # shared downloads + SQLite DB
+      - ${GALLERY_DL_CONFIG_PATH:-./config/gallery-dl.json}:/etc/gallery-dl/config.json:ro
+    depends_on:
+      - redis                         # remove this line if you point GDL_REDIS_URL at an external instance
+
+  worker:
+    image: gallery-downloader-worker:latest
+    container_name: gdl_worker
+    restart: unless-stopped
+    environment:
+      GDL_API_TOKEN: ${GDL_API_TOKEN:?err}
+      GDL_REDIS_URL: ${GDL_REDIS_URL:?err}
+      GDL_STORAGE_ROOT: ${GDL_STORAGE_ROOT:-/data/downloads}
+      GDL_GALLERY_DL_EXTRA_ARGS: ${GDL_GALLERY_DL_EXTRA_ARGS:-}
+      GDL_JOB_TIMEOUT_SECONDS: ${GDL_JOB_TIMEOUT_SECONDS:-1800}
+    volumes:
+      - gallery_data:/data
+      - ${GALLERY_DL_CONFIG_PATH:-./config/gallery-dl.json}:/etc/gallery-dl/config.json:ro
+    depends_on:
+      - redis                         # remove if using external Redis
+
+  # Optional dedicated Redis. Drop this entire block (and the `depends_on`) if
+  # you plan to reuse an existing redis:6.2 / redis:7 instance instead.
+  redis:
+    image: redis:7-alpine
+    container_name: gdl_redis
+    restart: unless-stopped
+    command: ["redis-server", "--save", "60", "1"]
+    volumes:
+      - redis_data:/data
+
+volumes:
+  gallery_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /share/downloads/gallery   # change to your NAS path
+  redis_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /share/docker/redis-gdl    # only needed if you keep the bundled redis
