@@ -70,6 +70,29 @@ class DownloadRepository:
                 return self._to_read(entity)
         return None
 
+    def find_by_urls(self, urls: Iterable[str]) -> Optional[DownloadRead]:
+        for url in urls:
+            stmt = select(Download).join(DownloadUrl).where(DownloadUrl.url == url)
+            entity = self.session.exec(stmt).first()
+            if entity:
+                return self._to_read(entity)
+        return None
+
+    def find_failed_by_urls(self, urls: Iterable[str]) -> Optional[Download]:
+        for url in urls:
+            stmt = select(Download).join(DownloadUrl).where(DownloadUrl.url == url)
+            entity = self.session.exec(stmt).first()
+            if entity and entity.status == DownloadStatus.failed:
+                return entity
+        return None
+
+    def delete(self, download_id: uuid.UUID) -> None:
+        entity = self.session.exec(select(Download).where(Download.id == download_id)).first()
+        if entity is None:
+            return
+        self.session.delete(entity)
+        self.session.commit()
+
     def update_status(
         self,
         download_id: uuid.UUID,
