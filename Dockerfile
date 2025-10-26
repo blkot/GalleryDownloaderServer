@@ -1,9 +1,7 @@
 FROM python:3.13-slim AS builder
 
 ENV UV_SYSTEM_PYTHON=1
-RUN sed -i 's|deb.debian.org|mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.list \
-    && sed -i 's|security.debian.org|mirrors.tuna.tsinghua.edu.cn|g' /etc/apt/sources.list \
-    && apt-get update && apt-get install -y --no-install-recommends curl build-essential \
+RUN apt-get update && apt-get install -y --no-install-recommends curl build-essential \
     && rm -rf /var/lib/apt/lists/*
 
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh

@@ -55,6 +55,9 @@ async def enqueue_download(
         if existing:
             response.status_code = status.HTTP_200_OK
             return existing
+        failed_entity = repo.find_failed_by_urls(normalized_urls)
+        if failed_entity:
+            repo.delete(failed_entity.id)
         record = repo.create(
             download_id=download_id,
             urls=normalized_urls,

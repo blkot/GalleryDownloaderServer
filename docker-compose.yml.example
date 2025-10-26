@@ -2,11 +2,12 @@ services:
   api:
     build: .
     image: gallery-downloader-api:latest
+    user: "${GDL_RUN_USER:-999}:${GDL_RUN_GROUP:-999}"
     restart: unless-stopped
     environment:
       GDL_API_TOKEN: ${GDL_API_TOKEN:?err}
       GDL_REDIS_URL: ${GDL_REDIS_URL:?err}
-      GDL_DATABASE_URL: ${GDL_DATABASE_URL:-sqlite:///data/gallery.db}
+      GDL_DATABASE_URL: ${GDL_DATABASE_URL:-sqlite:////data/gallery.db}
       GDL_STORAGE_ROOT: ${GDL_STORAGE_ROOT:-/downloads}
       GDL_GALLERY_DL_EXTRA_ARGS: ${GDL_GALLERY_DL_EXTRA_ARGS:-}
       GDL_JOB_TIMEOUT_SECONDS: ${GDL_JOB_TIMEOUT_SECONDS:-0}
@@ -23,11 +24,12 @@ services:
     build: .
     image: gallery-downloader-worker:latest
     entrypoint: ["python", "-m", "app.worker"]
+    user: "${GDL_RUN_USER:-999}:${GDL_RUN_GROUP:-999}"
     restart: unless-stopped
     environment:
       GDL_API_TOKEN: ${GDL_API_TOKEN:?err}
       GDL_REDIS_URL: ${GDL_REDIS_URL:?err}
-      GDL_DATABASE_URL: ${GDL_DATABASE_URL:-sqlite:///data/gallery.db}
+      GDL_DATABASE_URL: ${GDL_DATABASE_URL:-sqlite:////data/gallery.db}
       GDL_STORAGE_ROOT: ${GDL_STORAGE_ROOT:-/downloads}
       GDL_GALLERY_DL_EXTRA_ARGS: ${GDL_GALLERY_DL_EXTRA_ARGS:-}
       GDL_JOB_TIMEOUT_SECONDS: ${GDL_JOB_TIMEOUT_SECONDS:-0}

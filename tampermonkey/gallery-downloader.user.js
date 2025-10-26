@@ -20,6 +20,7 @@
 // @connect      localhost
 // @connect      127.0.0.1
 // @connect      saint2.cr
+// @connect      192.168.50.68
 // ==/UserScript==
 
 (function () {
