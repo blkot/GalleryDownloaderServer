@@ -52,6 +52,7 @@
   ];
   const BUTTON_CLASS = "gdl-send-button";
   const CONTAINER_CLASS = "gdl-send-container";
+  const TITLE_PARAM_KEY = "gdl_title";
 
   const config = {
     apiBase: GM_getValue("gdl_apiBase", "http://localhost:8080"),
@@ -83,6 +84,41 @@
       alert("API token updated.");
     }
   });
+
+  function stripTitleParam(url) {
+    try {
+      const parsed = new URL(url, window.location.origin);
+      parsed.searchParams.delete(TITLE_PARAM_KEY);
+      return parsed.toString();
+    } catch (error) {
+      console.debug("Failed to strip title param", error, url);
+      return url;
+    }
+  }
+
+  function attachTitleParam(url, title) {
+    if (!title) {
+      return stripTitleParam(url);
+    }
+    try {
+      const parsed = new URL(url, window.location.origin);
+      parsed.searchParams.set(TITLE_PARAM_KEY, title);
+      return parsed.toString();
+    } catch (error) {
+      console.debug("Failed to attach title param", error, url);
+      return url;
+    }
+  }
+
+  function extractTitleFromUrl(url) {
+    try {
+      const parsed = new URL(url, window.location.origin);
+      return parsed.searchParams.get(TITLE_PARAM_KEY);
+    } catch (error) {
+      console.debug("Failed to extract title from url", error, url);
+      return null;
+    }
+  }
 
   function sanitizeSegment(segment) {
     if (!segment) return "";
@@ -164,8 +200,9 @@
       event.stopPropagation();
     }
 
+    const cleanUrl = stripTitleParam(url);
     const payload = JSON.stringify({
-      urls: [url],
+      urls: [cleanUrl],
       post_title: threadTitle,
     });
 
@@ -217,12 +254,19 @@
       return;
     }
 
-    const url = getLinkFromBlock(block);
-    if (!url) return;
+    const rawUrl = getLinkFromBlock(block);
+    if (!rawUrl) return;
 
     block.dataset.gdlDecorated = "true";
     if (getComputedStyle(block).position === "static") {
       block.style.position = "relative";
+    }
+
+    const baseUrl = stripTitleParam(rawUrl);
+    const titledUrl = attachTitleParam(baseUrl, threadTitle);
+    const anchor = block.querySelector("a[href]");
+    if (anchor && anchor.href !== titledUrl) {
+      anchor.href = titledUrl;
     }
 
     const button = buildButton();
@@ -232,7 +276,7 @@
         event.stopPropagation();
       });
     });
-    button.addEventListener("click", (event) => sendDownloadRequest(url, threadTitle, button, event));
+    button.addEventListener("click", (event) => sendDownloadRequest(baseUrl, threadTitle, button, event));
 
     const container = document.createElement("div");
     container.className = CONTAINER_CLASS;
@@ -251,9 +295,14 @@
       return;
     }
 
-    const url = anchor.getAttribute("href");
-    if (!url) return;
+    const rawUrl = anchor.getAttribute("href");
+    if (!rawUrl) return;
 
+    const baseUrl = stripTitleParam(rawUrl);
+    const titledUrl = attachTitleParam(baseUrl, threadTitle);
+    if (anchor.href !== titledUrl) {
+      anchor.href = titledUrl;
+    }
     const wrapper = document.createElement("span");
     wrapper.className = CONTAINER_CLASS;
     wrapper.style.marginLeft = "8px";
@@ -269,7 +318,7 @@
         event.stopPropagation();
       });
     });
-    button.addEventListener("click", (event) => sendDownloadRequest(url, threadTitle, button, event));
+    button.addEventListener("click", (event) => sendDownloadRequest(baseUrl, threadTitle, button, event));
 
     wrapper.appendChild(button);
     anchor.insertAdjacentElement("afterend", wrapper);
@@ -303,7 +352,8 @@
         event.stopPropagation();
       });
     });
-    button.addEventListener("click", (event) => sendDownloadRequest(url, threadTitle, button, event));
+    const baseUrl = stripTitleParam(url);
+    button.addEventListener("click", (event) => sendDownloadRequest(baseUrl, threadTitle, button, event));
 
     const container = document.createElement("div");
     container.className = CONTAINER_CLASS;
@@ -331,6 +381,10 @@
   }
 
   function extractDirectPostTitle() {
+    const queryTitle = extractTitleFromUrl(window.location.href);
+    if (queryTitle) {
+      return sanitizeSegment(queryTitle);
+    }
     const title = document.title || window.location.hostname;
     return sanitizeSegment(title);
   }
@@ -349,6 +403,7 @@
 
     const postTitle = extractDirectPostTitle();
     const url = window.location.href;
+    const baseUrl = stripTitleParam(url);
 
     const button = buildButton("Send to Downloader");
     button.style.position = "fixed";
@@ -367,7 +422,7 @@
       });
     });
 
-    button.addEventListener("click", (event) => sendDownloadRequest(url, postTitle, button, event));
+    button.addEventListener("click", (event) => sendDownloadRequest(baseUrl, postTitle, button, event));
 
     document.body.appendChild(button);
     document.body.dataset.gdlDirectDecorated = "true";
