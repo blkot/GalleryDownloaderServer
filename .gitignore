@@ -31,6 +31,8 @@ Thumbs.db
 docs/__pycache__/
 
 .env
+TODOS.md
+scripts/
 
 # docker images build folder
 .images/
