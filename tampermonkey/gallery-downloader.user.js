@@ -59,6 +59,13 @@
     token: GM_getValue("gdl_token", "changeme"),
   };
 
+  const NOTIFICATION_WS_PATH = "/ws/notifications";
+  const NOTIFIED_IDS_KEY = "gdl_notified_ids";
+  const MAX_BACKOFF_SECONDS = 30;
+  let notificationSocket = null;
+  let reconnectTimer = null;
+  let reconnectAttempt = 0;
+
   function whenDocumentReady(callback) {
     if (document.readyState === "loading") {
       document.addEventListener("DOMContentLoaded", callback, { once: true });
@@ -82,6 +89,131 @@
       config.token = value;
       GM_setValue("gdl_token", config.token);
       alert("API token updated.");
+    }
+  });
+
+  function readNotifiedIds() {
+    try {
+      const raw = GM_getValue(NOTIFIED_IDS_KEY, "[]");
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (error) {
+      console.debug("Failed to parse notified IDs", error);
+      return [];
+    }
+  }
+
+  function hasNotified(downloadId) {
+    if (!downloadId) return false;
+    const stored = readNotifiedIds();
+    return stored.includes(downloadId);
+  }
+
+  function rememberNotified(downloadId) {
+    if (!downloadId) return;
+    const stored = readNotifiedIds();
+    if (stored.includes(downloadId)) {
+      return;
+    }
+    stored.push(downloadId);
+    const trimmed = stored.slice(-50);
+    GM_setValue(NOTIFIED_IDS_KEY, JSON.stringify(trimmed));
+  }
+
+  function buildWebSocketUrl() {
+    if (!config.apiBase) {
+      return null;
+    }
+    const trimmedBase = config.apiBase.replace(/\/+$/, "");
+    const protocol = trimmedBase.startsWith("https://") ? "wss://" : "ws://";
+    const host = trimmedBase.replace(/^https?:\/\//, "");
+    return `${protocol}${host}${NOTIFICATION_WS_PATH}?token=${encodeURIComponent(config.token)}`;
+  }
+
+  function handleNotificationMessage(payload) {
+    if (!payload || typeof payload !== "object") {
+      return;
+    }
+    if (payload.type !== "queued") {
+      return;
+    }
+    const downloadId = payload.download_id;
+    if (hasNotified(downloadId)) {
+      return;
+    }
+    rememberNotified(downloadId);
+    const title = payload.post_title || "Download queued";
+    const urlCount = Array.isArray(payload.urls) ? payload.urls.length : 0;
+    const subtitle =
+      urlCount > 1 ? `${urlCount} items queued` : payload.urls && payload.urls[0] ? payload.urls[0] : "Queued";
+    notify("Gallery Downloader", `${title}\n${subtitle}`);
+  }
+
+  function scheduleReconnect() {
+    if (reconnectTimer) {
+      return;
+    }
+    const delaySeconds = Math.min(2 ** reconnectAttempt, MAX_BACKOFF_SECONDS);
+    reconnectAttempt += 1;
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null;
+      connectNotificationStream();
+    }, delaySeconds * 1000);
+  }
+
+  function connectNotificationStream() {
+    const wsUrl = buildWebSocketUrl();
+    if (!wsUrl) {
+      return;
+    }
+    try {
+      notificationSocket = new WebSocket(wsUrl);
+    } catch (error) {
+      console.debug("Failed to create WebSocket", error);
+      scheduleReconnect();
+      return;
+    }
+
+    notificationSocket.addEventListener("open", () => {
+      reconnectAttempt = 0;
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+      }
+    });
+
+    notificationSocket.addEventListener("message", (event) => {
+      try {
+        const payload = JSON.parse(event.data);
+        handleNotificationMessage(payload);
+      } catch (error) {
+        console.debug("Failed to parse notification", error, event.data);
+      }
+    });
+
+    notificationSocket.addEventListener("close", () => {
+      notificationSocket = null;
+      scheduleReconnect();
+    });
+
+    notificationSocket.addEventListener("error", () => {
+      if (notificationSocket) {
+        notificationSocket.close();
+      }
+    });
+  }
+
+  function startNotificationStream() {
+    if (notificationSocket) {
+      return;
+    }
+    connectNotificationStream();
+  }
+
+  window.addEventListener("beforeunload", () => {
+    if (notificationSocket) {
+      notificationSocket.close();
+      notificationSocket = null;
     }
   });
 
@@ -353,6 +485,10 @@
       });
     });
     const baseUrl = stripTitleParam(url);
+    const titledUrl = attachTitleParam(baseUrl, threadTitle);
+    if (iframe.src !== titledUrl) {
+      iframe.src = titledUrl;
+    }
     button.addEventListener("click", (event) => sendDownloadRequest(baseUrl, threadTitle, button, event));
 
     const container = document.createElement("div");
@@ -454,6 +590,10 @@
 
   const isThreadPage =
     window.location.hostname.includes("simpcity.cr") && window.location.pathname.startsWith("/threads/");
+
+  whenDocumentReady(() => {
+    startNotificationStream();
+  });
 
   if (isThreadPage) {
     const observer = new MutationObserver(() => scanPage());
