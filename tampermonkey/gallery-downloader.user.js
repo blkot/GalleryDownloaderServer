@@ -399,6 +399,7 @@
     const anchor = block.querySelector("a[href]");
     if (anchor && anchor.href !== titledUrl) {
       anchor.href = titledUrl;
+      anchor.setAttribute("href", titledUrl);
     }
 
     const button = buildButton();
@@ -432,9 +433,8 @@
 
     const baseUrl = stripTitleParam(rawUrl);
     const titledUrl = attachTitleParam(baseUrl, threadTitle);
-    if (anchor.href !== titledUrl) {
-      anchor.href = titledUrl;
-    }
+    anchor.href = titledUrl;
+    anchor.setAttribute("href", titledUrl);
     const wrapper = document.createElement("span");
     wrapper.className = CONTAINER_CLASS;
     wrapper.style.marginLeft = "8px";
@@ -605,3 +605,4 @@
     });
   }
 })();
+
