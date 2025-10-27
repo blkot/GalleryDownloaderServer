@@ -82,6 +82,25 @@ The API is served at `http://localhost:8080`. Add `Authorization: Bearer <token>
 
 See `docs/project-design.md` for the detailed system design and implementation roadmap.
 
+### Real-time Notifications
+
+- The API exposes a WebSocket stream at `ws://<host>:<port>/ws/notifications`. Supply the bearer token either via the `Authorization: Bearer` header or a `token` query parameter (e.g. `ws://nas.local:8080/ws/notifications?token=changeme`).
+- Each newly queued job emits a payload like:
+
+  ```json
+  {
+    "type": "queued",
+    "download_id": "8e6ef6d1-2f7a-4c2c-9579-1d9a4d869d20",
+    "post_title": "FunnyPost",
+    "urls": ["https://pixeldrain.com/u/xyz"],
+    "label": null,
+    "queued_at": "2025-10-26T12:34:56.789Z"
+  }
+  ```
+
+- When running behind a reverse proxy on your NAS, ensure WebSocket upgrades are forwarded (for Nginx add `proxy_set_header Upgrade $http_upgrade; proxy_set_header Connection "upgrade";`). HTTPS termination can live in the proxy; the FastAPI app itself continues to listen on HTTP.
+- The bundled Tampermonkey script automatically connects to this WebSocket, shows desktop notifications for new queues, and reuses the configured API base/token.
+
 ### License
 
 This project is released under the [MIT License](LICENSE). It builds on open-source components such as gallery-dl (MIT) and RQ (BSD).
