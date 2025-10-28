@@ -36,3 +36,6 @@ scripts/
 
 # docker images build folder
 .images/
+
+# Codex folder
+.codex/
