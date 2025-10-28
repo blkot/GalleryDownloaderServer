@@ -1,17 +1,12 @@
 // ==UserScript==
-// @name         Gallery Downloader Sender
+// @name         Gallery Downloader – SimpCity Helper
 // @namespace    https://github.com/xanta/gallerydownloaderserver
-// @version      0.3.0
-// @description  Send gallery links from SimpCity threads or supported hosts to the Gallery Downloader API.
+// @version      0.4.0
+// @description  Decorate SimpCity threads with Gallery Downloader actions and normalised provider links.
 // @author       You
 // @match        https://simpcity.cr/threads/*
-// @match        https://pixeldrain.com/*
-// @include      https://*bunkr.*/*
-// @match        https://gofile.io/*
-// @match        https://cyberdrop.me/*
-// @include      https://*cyberdrop.*/*
-// @match        https://saint2.cr/*
-// @match        https://saint2.su/*
+// @match        https://simpcity.su/threads/*
+// @match        https://simpcity.gs/threads/*
 // @grant        GM_registerMenuCommand
 // @grant        GM_getValue
 // @grant        GM_setValue
@@ -28,14 +23,6 @@
 
   const SUPPORTED_HOSTS = ["pixeldrain", "bunkr", "gofile", "cyberdrop", "redgifs", "saint2"];
   const SUPPORTED_IFRAME_HOSTS = ["saint2.", "cyberdrop.", "bunkr.", "gofile.", "pixeldrain."];
-  const PROVIDER_MATCHERS = [
-    (host) => host.includes("bunkr."),
-    (host) => host.includes("pixeldrain."),
-    (host) => host.includes("gofile"),
-    (host) => host.includes("cyberdrop"),
-    (host) => host.includes("saint2."),
-    (host) => host.includes("redgifs."),
-  ];
   const BUTTON_CLASS = "gdl-send-button";
   const CONTAINER_CLASS = "gdl-send-container";
   const TITLE_PARAM_KEY = "gdl_title";
@@ -51,20 +38,6 @@
   let notificationSocket = null;
   let reconnectTimer = null;
   let reconnectAttempt = 0;
-
-  function isSimpcityHost(host) {
-    return host.endsWith("simpcity.cr") || host.endsWith("simpcity.su") || host.endsWith("simpcity.gs");
-  }
-
-  function isProviderHost(host) {
-    return PROVIDER_MATCHERS.some((fn) => {
-      try {
-        return fn(host);
-      } catch {
-        return false;
-      }
-    });
-  }
 
   function whenDocumentReady(callback) {
     if (document.readyState === "loading") {
@@ -121,9 +94,6 @@
   }
 
   function buildWebSocketUrl() {
-    if (!config.apiBase) {
-      return null;
-    }
     const trimmedBase = config.apiBase.replace(/\/+$/, "");
     const protocol = trimmedBase.startsWith("https://") ? "wss://" : "ws://";
     const host = trimmedBase.replace(/^https?:\/\//, "");
@@ -144,8 +114,7 @@
     rememberNotified(downloadId);
     const title = payload.post_title || "Download queued";
     const urlCount = Array.isArray(payload.urls) ? payload.urls.length : 0;
-    const subtitle =
-      urlCount > 1 ? `${urlCount} items queued` : payload.urls && payload.urls[0] ? payload.urls[0] : "Queued";
+    const subtitle = urlCount > 1 ? `${urlCount} items queued` : payload.urls?.[0] || "Queued";
     notify("Gallery Downloader", `${title}\n${subtitle}`);
   }
 
@@ -163,13 +132,10 @@
 
   function connectNotificationStream() {
     const wsUrl = buildWebSocketUrl();
-    if (!wsUrl) {
-      return;
-    }
     try {
       notificationSocket = new WebSocket(wsUrl);
     } catch (error) {
-      console.debug("Failed to create WebSocket", error);
+      console.debug("Failed to open websocket", error);
       scheduleReconnect();
       return;
     }
@@ -187,7 +153,7 @@
         const payload = JSON.parse(event.data);
         handleNotificationMessage(payload);
       } catch (error) {
-        console.debug("Failed to parse notification", error, event.data);
+        console.debug("Failed to parse notification payload", error);
       }
     });
 
@@ -229,23 +195,19 @@
       const parsed = new URL(url, window.location.origin);
       const host = parsed.hostname.toLowerCase();
       if (host.includes("bunkr")) {
-        const mappedHost = Object.entries(BUNKR_HOST_MAP).find(([legacy]) => host.endsWith(legacy));
-        if (mappedHost) {
-          const legacy = mappedHost[0];
-          const canonical = mappedHost[1];
-          parsed.hostname = host.replace(new RegExp(`${legacy}$`, "i"), canonical);
+        const mapped = Object.entries(BUNKR_HOST_MAP).find(([legacy]) => host.endsWith(legacy));
+        if (mapped) {
+          parsed.hostname = host.replace(new RegExp(`${mapped[0]}$`, "i"), mapped[1]);
         } else if (!host.endsWith("bunkr.ws")) {
           parsed.hostname = host.replace(/bunkr[\w-]*\.[^.]+$/i, "bunkr.ws");
         }
-        if (parsed.pathname.startsWith("/v/")) {
-          parsed.pathname = parsed.pathname.replace("/v/", "/f/");
-        } else if (parsed.pathname.startsWith("/d/")) {
-          parsed.pathname = parsed.pathname.replace("/d/", "/f/");
+        if (parsed.pathname.startsWith("/v/") || parsed.pathname.startsWith("/d/")) {
+          parsed.pathname = parsed.pathname.replace(/\/[vd]\//, "/f/");
         }
       }
       return parsed.toString();
     } catch (error) {
-      console.debug("Failed to normalize provider url", error, url);
+      console.debug("Failed to normalise provider url", error, url);
       return url;
     }
   }
@@ -298,7 +260,6 @@
     if (match && match[1]) {
       return sanitizeSegment(match[1]);
     }
-
     const header = document.querySelector("h1");
     if (header) {
       return sanitizeSegment(header.textContent || "");
@@ -414,11 +375,7 @@
           button.style.borderColor = "#dc3545";
           button.disabled = false;
           alert(`Failed to enqueue download: ${response.status} ${response.statusText}`);
-          notify(
-            "Gallery Downloader – error",
-            `Failed to queue download (${response.status} ${response.statusText})`,
-            true
-          );
+          notify("Gallery Downloader – error", `Failed to queue download (${response.status} ${response.statusText})`, true);
         }
       },
       onerror: (error) => {
@@ -447,7 +404,6 @@
     }
 
     const normalizedBaseUrl = stripTitleParam(rawUrl);
-    const titledUrl = attachTitleParam(normalizedBaseUrl, threadTitle);
 
     const anchor = block.querySelector("a[href]");
     if (anchor && !anchor.dataset.gdlClickBound) {
@@ -510,6 +466,11 @@
     const titledUrl = attachTitleParam(baseUrl, threadTitle);
     anchor.href = titledUrl;
     anchor.setAttribute("href", titledUrl);
+    if (anchor.dataset && "proxyHref" in anchor.dataset) {
+      anchor.dataset.proxyHref = titledUrl;
+      anchor.setAttribute("data-proxy-href", titledUrl);
+    }
+
     const wrapper = document.createElement("span");
     wrapper.className = CONTAINER_CLASS;
     wrapper.style.marginLeft = "8px";
@@ -560,10 +521,6 @@
       });
     });
     const baseUrl = stripTitleParam(url);
-    const titledUrl = attachTitleParam(baseUrl, threadTitle);
-    if (iframe.src !== titledUrl) {
-      iframe.src = titledUrl;
-    }
     button.addEventListener("click", (event) => sendDownloadRequest(baseUrl, threadTitle, button, event));
 
     const container = document.createElement("div");
@@ -603,76 +560,6 @@
     });
   }
 
-  function parseProviderContext() {
-    try {
-      const normalized = normalizeProviderUrl(window.location.href);
-      const current = new URL(normalized);
-      const downloadUrl = current.toString();
-      const rawTitle = current.searchParams.get(TITLE_PARAM_KEY);
-      const postTitle = rawTitle ? sanitizeSegment(rawTitle) : null;
-      return { downloadUrl, postTitle };
-    } catch (error) {
-      console.debug("Failed to parse provider context", error);
-      return { downloadUrl: window.location.href, postTitle: null };
-    }
-  }
-
-  function updateProviderButton(button, context) {
-    if (!button || !context) {
-      return;
-    }
-    const { downloadUrl, postTitle } = context;
-    button.dataset.gdlUrl = downloadUrl;
-    button.dataset.gdlTitle = postTitle || "";
-    const label =
-      postTitle && postTitle.length > 40 ? `${postTitle.slice(0, 37)}…` : postTitle;
-    button.textContent = label ? `Send • ${label}` : "Send to Downloader";
-    button.disabled = false;
-    button.style.background = "#0d6efd";
-    button.style.borderColor = "#0066ff";
-  }
-
-  function ensureProviderButton(context) {
-    const existing = document.getElementById("gdl-provider-button");
-    if (existing) {
-      updateProviderButton(existing, context);
-      return;
-    }
-    const container = document.createElement("div");
-    container.id = "gdl-provider-button-container";
-    container.style.position = "fixed";
-    container.style.top = "16px";
-    container.style.right = "16px";
-    container.style.zIndex = "2147483647";
-    container.style.pointerEvents = "auto";
-
-    const button = buildButton("Send to Downloader");
-    button.id = "gdl-provider-button";
-    button.style.marginTop = "0";
-    button.style.padding = "6px 12px";
-    button.style.fontSize = "13px";
-    updateProviderButton(button, context);
-    button.addEventListener("click", (event) => {
-      const downloadUrl = button.dataset.gdlUrl || window.location.href;
-      const postTitle = button.dataset.gdlTitle || null;
-      sendDownloadRequest(downloadUrl, postTitle, button, event);
-    });
-
-    container.appendChild(button);
-    document.body.appendChild(container);
-  }
-
-  function processProviderPage() {
-    const context = parseProviderContext();
-    ensureProviderButton(context);
-    const handleLocationChange = () => {
-      const updated = parseProviderContext();
-      ensureProviderButton(updated);
-    };
-    window.addEventListener("popstate", handleLocationChange);
-    window.addEventListener("hashchange", handleLocationChange);
-  }
-
   function processSimpcityThread() {
     startNotificationStream();
     const threadTitle = extractThreadTitle();
@@ -681,17 +568,8 @@
     scanPage(threadTitle);
   }
 
-  const host = window.location.hostname.toLowerCase();
-  const isFramed = window.top !== window.self;
-  const isThreadPage = isSimpcityHost(host) && window.location.pathname.startsWith("/threads/");
-
-  if (isThreadPage) {
-    whenDocumentReady(() => {
-      processSimpcityThread();
-    });
-  } else if (isProviderHost(host) && !isFramed) {
-    whenDocumentReady(() => {
-      processProviderPage();
-    });
-  }
+  whenDocumentReady(() => {
+    processSimpcityThread();
+  });
 })();
+
