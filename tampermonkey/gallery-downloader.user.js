@@ -217,14 +217,25 @@
     }
   });
 
+  const BUNKR_HOST_MAP = {
+    "bunkr.si": "bunkr.ws",
+    "bunkrrr.org": "bunkr.ws",
+    "bunkr.site": "bunkr.ws",
+    "bunkr.ru": "bunkr.ws",
+  };
+
   function normalizeProviderUrl(url) {
     try {
       const parsed = new URL(url, window.location.origin);
       const host = parsed.hostname.toLowerCase();
-      if (host.includes("bunkr.")) {
-        const suffixMatch = host.match(/bunkr\.[^.]+$/);
-        if (suffixMatch && suffixMatch[0] !== "bunkr.ws") {
-          parsed.hostname = host.replace(suffixMatch[0], "bunkr.ws");
+      if (host.includes("bunkr")) {
+        const mappedHost = Object.entries(BUNKR_HOST_MAP).find(([legacy]) => host.endsWith(legacy));
+        if (mappedHost) {
+          const legacy = mappedHost[0];
+          const canonical = mappedHost[1];
+          parsed.hostname = host.replace(new RegExp(`${legacy}$`, "i"), canonical);
+        } else if (!host.endsWith("bunkr.ws")) {
+          parsed.hostname = host.replace(/bunkr[\w-]*\.[^.]+$/i, "bunkr.ws");
         }
         if (parsed.pathname.startsWith("/v/")) {
           parsed.pathname = parsed.pathname.replace("/v/", "/f/");
@@ -328,8 +339,27 @@
 
   function getLinkFromBlock(block) {
     const anchor = block.querySelector("a[href]");
-    if (!anchor) return null;
-    return anchor.href;
+    return anchor ? anchor.href : null;
+  }
+
+  function enforceBlockUrl(block, anchor, threadTitle) {
+    if (!anchor) return;
+    const baseUrl = stripTitleParam(anchor.href || "");
+    const titledUrl = attachTitleParam(baseUrl, threadTitle);
+    if (anchor.href !== titledUrl) {
+      anchor.href = titledUrl;
+      anchor.setAttribute("href", titledUrl);
+    }
+    if (anchor.dataset && "proxyHref" in anchor.dataset) {
+      anchor.dataset.proxyHref = titledUrl;
+      anchor.setAttribute("data-proxy-href", titledUrl);
+    }
+    block.dataset.url = titledUrl;
+    block.setAttribute("data-url", titledUrl);
+    if ("proxyHref" in block.dataset || block.hasAttribute("data-proxy-href")) {
+      block.dataset.proxyHref = titledUrl;
+      block.setAttribute("data-proxy-href", titledUrl);
+    }
   }
 
   function notify(title, text, isError = false) {
@@ -416,37 +446,35 @@
       block.style.position = "relative";
     }
 
-    const baseUrl = stripTitleParam(rawUrl);
-    const titledUrl = attachTitleParam(baseUrl, threadTitle);
+    const normalizedBaseUrl = stripTitleParam(rawUrl);
+    const titledUrl = attachTitleParam(normalizedBaseUrl, threadTitle);
+
     const anchor = block.querySelector("a[href]");
-    if (anchor && anchor.href !== titledUrl) {
-      anchor.href = titledUrl;
-      anchor.setAttribute("href", titledUrl);
-      if (anchor.dataset && "proxyHref" in anchor.dataset) {
-        anchor.dataset.proxyHref = titledUrl;
-        anchor.setAttribute("data-proxy-href", titledUrl);
-      }
+    if (anchor && !anchor.dataset.gdlClickBound) {
       anchor.addEventListener(
         "click",
         (event) => {
           event.preventDefault();
           event.stopPropagation();
           const target = anchor.target || "_blank";
+          const destination = anchor.href;
           if (target === "_self") {
-            window.location.href = titledUrl;
+            window.location.href = destination;
           } else {
-            window.open(titledUrl, target);
+            window.open(destination, target);
           }
         },
         { capture: true }
       );
+      anchor.dataset.gdlClickBound = "true";
     }
 
-    block.dataset.url = titledUrl;
-    block.setAttribute("data-url", titledUrl);
-    if ("proxyHref" in block.dataset || block.hasAttribute("data-proxy-href")) {
-      block.dataset.proxyHref = titledUrl;
-      block.setAttribute("data-proxy-href", titledUrl);
+    enforceBlockUrl(block, anchor, threadTitle);
+
+    if (anchor && !anchor.dataset.gdlHrefObserver) {
+      const observer = new MutationObserver(() => enforceBlockUrl(block, anchor, threadTitle));
+      observer.observe(anchor, { attributes: true, attributeFilter: ["href"] });
+      anchor.dataset.gdlHrefObserver = "true";
     }
 
     const button = buildButton();
@@ -456,7 +484,7 @@
         event.stopPropagation();
       });
     });
-    button.addEventListener("click", (event) => sendDownloadRequest(baseUrl, threadTitle, button, event));
+    button.addEventListener("click", (event) => sendDownloadRequest(normalizedBaseUrl, threadTitle, button, event));
 
     const container = document.createElement("div");
     container.className = CONTAINER_CLASS;
@@ -627,7 +655,6 @@
     button.addEventListener("click", (event) => {
       const downloadUrl = button.dataset.gdlUrl || window.location.href;
       const postTitle = button.dataset.gdlTitle || null;
-      console.log("Provider button clicked", downloadUrl, postTitle);
       sendDownloadRequest(downloadUrl, postTitle, button, event);
     });
 
@@ -655,13 +682,14 @@
   }
 
   const host = window.location.hostname.toLowerCase();
+  const isFramed = window.top !== window.self;
   const isThreadPage = isSimpcityHost(host) && window.location.pathname.startsWith("/threads/");
 
   if (isThreadPage) {
     whenDocumentReady(() => {
       processSimpcityThread();
     });
-  } else if (isProviderHost(host)) {
+  } else if (isProviderHost(host) && !isFramed) {
     whenDocumentReady(() => {
       processProviderPage();
     });
