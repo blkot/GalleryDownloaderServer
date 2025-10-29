@@ -31,6 +31,7 @@
     apiBase: GM_getValue("gdl_apiBase", "http://localhost:8080"),
     token: GM_getValue("gdl_token", "changeme"),
   };
+  const PANEL_FILTER_STORAGE_KEY = "gdl_panel_filter_mode";
 
   const PANEL_STYLE = `
     #gdl-status-panel {
@@ -78,6 +79,42 @@
       cursor: pointer;
       font-size: 14px;
       padding: 4px;
+    }
+    #gdl-status-panel .gdl-panel-controls {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 12px;
+      gap: 8px;
+      background: rgba(0, 0, 0, 0.25);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    }
+    #gdl-status-panel .gdl-controls-label {
+      font-size: 12px;
+      color: rgba(240, 240, 240, 0.75);
+      margin-right: 4px;
+    }
+    #gdl-status-panel .gdl-filter-group {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+    #gdl-status-panel .gdl-filter-button {
+      background: rgba(255, 255, 255, 0.06);
+      color: #f0f0f0;
+      border: 1px solid transparent;
+      border-radius: 999px;
+      padding: 2px 10px;
+      font-size: 11px;
+      cursor: pointer;
+    }
+    #gdl-status-panel .gdl-filter-button:hover {
+      background: rgba(255, 255, 255, 0.12);
+    }
+    #gdl-status-panel .gdl-filter-button.active {
+      background: rgba(13, 110, 253, 0.25);
+      border-color: rgba(13, 110, 253, 0.6);
+      color: #d5e6ff;
     }
     #gdl-status-panel .gdl-panel-body {
       max-height: calc(100vh - 180px);
@@ -193,6 +230,8 @@
     listContainer: null,
     toggleButton: null,
     collapsed: GM_getValue("gdl_panel_collapsed", false),
+    filterMode: GM_getValue(PANEL_FILTER_STORAGE_KEY, "thread"),
+    filterButtons: new Map(),
     downloads: new Map(),
     autoRefreshTimer: null,
     pendingRefreshTimer: null,
@@ -272,6 +311,9 @@
 
   function initDownloadPanel(threadTitle) {
     panelState.threadTitle = threadTitle;
+    if (!["thread", "all"].includes(panelState.filterMode)) {
+      panelState.filterMode = "thread";
+    }
     ensurePanelStyles();
     if (!panelState.container) {
       buildStatusPanel();
@@ -284,6 +326,7 @@
     const container = document.createElement("div");
     container.id = "gdl-status-panel";
     container.className = panelState.collapsed ? "collapsed" : "expanded";
+    panelState.filterButtons = new Map();
 
     const header = document.createElement("div");
     header.className = "gdl-panel-header";
@@ -305,18 +348,73 @@
     });
     header.appendChild(toggle);
 
+    const controls = document.createElement("div");
+    controls.className = "gdl-panel-controls";
+
+    const controlsLabel = document.createElement("span");
+    controlsLabel.className = "gdl-controls-label";
+    controlsLabel.textContent = "Show:";
+    controls.appendChild(controlsLabel);
+
+    const filterGroup = document.createElement("div");
+    filterGroup.className = "gdl-filter-group";
+    filterGroup.appendChild(createFilterButton("thread", "This thread"));
+    filterGroup.appendChild(createFilterButton("all", "All"));
+    controls.appendChild(filterGroup);
+
     const body = document.createElement("div");
     body.className = "gdl-panel-body";
 
     container.appendChild(header);
+    container.appendChild(controls);
     container.appendChild(body);
     document.body.appendChild(container);
 
     panelState.container = container;
     panelState.listContainer = body;
     panelState.toggleButton = toggle;
+    updateFilterButtons();
 
     renderDownloadPanel();
+  }
+
+  function createFilterButton(mode, label) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "gdl-filter-button";
+    button.dataset.filterMode = mode;
+    button.textContent = label;
+    button.addEventListener("click", () => setFilterMode(mode));
+    panelState.filterButtons.set(mode, button);
+    return button;
+  }
+
+  function setFilterMode(mode) {
+    if (!mode || panelState.filterMode === mode) {
+      return;
+    }
+    panelState.filterMode = mode;
+    GM_setValue(PANEL_FILTER_STORAGE_KEY, mode);
+    updateFilterButtons();
+    renderDownloadPanel();
+  }
+
+  function updateFilterButtons() {
+    if (!panelState.filterButtons || panelState.filterButtons.size === 0) {
+      return;
+    }
+    panelState.filterButtons.forEach((button, mode) => {
+      if (!button) {
+        return;
+      }
+      if (mode === panelState.filterMode) {
+        button.classList.add("active");
+        button.setAttribute("aria-pressed", "true");
+      } else {
+        button.classList.remove("active");
+        button.setAttribute("aria-pressed", "false");
+      }
+    });
   }
 
   function startPanelAutoRefresh() {
@@ -390,11 +488,13 @@
       const existing = panelState.downloads.get(normalized.id);
       panelState.downloads.set(normalized.id, mergeDownloadRecords(existing, normalized));
       seen.add(normalized.id);
+      updateTrackedButtonsForDownload(panelState.downloads.get(normalized.id));
     });
 
     // Remove queued/running jobs that disappeared from list.
     panelState.downloads.forEach((value, key) => {
       if (!seen.has(key) && (value.status === "queued" || value.status === "running")) {
+        resetButtonsForDownload(value);
         panelState.downloads.delete(key);
       }
     });
@@ -425,19 +525,23 @@
     if (!panelState.listContainer) {
       return;
     }
+    updateFilterButtons();
     const container = panelState.listContainer;
     container.innerHTML = "";
 
-    const downloads = Array.from(panelState.downloads.values());
-    if (!downloads.length) {
+    const allDownloads = Array.from(panelState.downloads.values());
+    const visibleDownloads = allDownloads.filter((item) => isDownloadVisible(item));
+
+    if (!visibleDownloads.length) {
       const empty = document.createElement("div");
       empty.className = "gdl-empty";
-      empty.textContent = "No downloads yet.";
+      empty.textContent =
+        panelState.filterMode === "thread" ? "No downloads for this thread." : "No downloads yet.";
       container.appendChild(empty);
       return;
     }
 
-    const active = downloads
+    const active = visibleDownloads
       .filter((item) => item.status === "queued" || item.status === "running")
       .sort((a, b) => {
         const aTime = a.requested_at ? new Date(a.requested_at).getTime() : 0;
@@ -445,7 +549,7 @@
         return bTime - aTime;
       });
 
-    const completed = downloads
+    const completed = visibleDownloads
       .filter((item) => item.status === "succeeded" || item.status === "failed")
       .sort((a, b) => {
         const aTime = a.finished_at ? new Date(a.finished_at).getTime() : 0;
@@ -467,6 +571,7 @@
         container.appendChild(createDownloadEntry(item));
       });
     }
+    syncTrackedButtons();
   }
 
   function buildSectionHeader(title) {
@@ -624,7 +729,9 @@
     const normalized = normalizeEventPayload(payload);
     if (normalized && normalized.id) {
       const existing = panelState.downloads.get(normalized.id);
-      panelState.downloads.set(normalized.id, mergeDownloadRecords(existing, normalized));
+      const merged = mergeDownloadRecords(existing, normalized);
+      panelState.downloads.set(normalized.id, merged);
+      updateTrackedButtonsForDownload(merged);
       renderDownloadPanel();
     }
     schedulePanelRefresh(payload.type === "queued" ? 1000 : 2000);
@@ -659,6 +766,19 @@
       }
     }
     return null;
+  }
+
+  function isDownloadVisible(download) {
+    if (!download) {
+      return false;
+    }
+    if (panelState.filterMode === "thread") {
+      if (!panelState.threadTitle) {
+        return true;
+      }
+      return isLocalToThread(download);
+    }
+    return true;
   }
 
   function isLocalToThread(download) {
@@ -871,7 +991,7 @@
   }
 
   function registerTrackedLink(url, threadTitle, element) {
-    if (!url || !element) {
+    if (!url) {
       return;
     }
     const key = stripTitleParam(url);
@@ -879,15 +999,20 @@
     if (!entry) {
       entry = {
         elements: new Set(),
+        buttons: new Set(),
         threadTitle: threadTitle || null,
       };
       trackedLinks.set(key, entry);
     }
-    entry.elements.add(element);
+    if (element) {
+      entry.elements.add(element);
+    }
     if (threadTitle && !entry.threadTitle) {
       entry.threadTitle = threadTitle;
     }
-    renderDownloadPanel();
+    if (element && panelState.listContainer) {
+      renderDownloadPanel();
+    }
   }
 
   function extractTitleFromUrl(url) {
@@ -1106,6 +1231,7 @@
     container.appendChild(button);
 
     block.appendChild(container);
+    attachButtonForLink(normalizedBaseUrl, button);
   }
 
   function decorateAnchor(anchor, threadTitle) {
@@ -1146,6 +1272,7 @@
     wrapper.appendChild(button);
     anchor.insertAdjacentElement("afterend", wrapper);
     anchor.dataset.gdlDecorated = "true";
+    attachButtonForLink(baseUrl, button);
   }
 
   function decorateIframe(iframe, threadTitle) {
@@ -1190,6 +1317,7 @@
 
     parent.appendChild(container);
     iframe.dataset.gdlDecorated = "true";
+    attachButtonForLink(baseUrl, button);
   }
 
   function scanPage(threadTitle) {
@@ -1230,3 +1358,136 @@
   });
 })();
 
+  function attachButtonForLink(url, button) {
+    if (!url || !button) {
+      return;
+    }
+    const key = stripTitleParam(url);
+    let entry = trackedLinks.get(key);
+    if (!entry) {
+      entry = {
+        elements: new Set(),
+        buttons: new Set(),
+        threadTitle: null,
+      };
+      trackedLinks.set(key, entry);
+    }
+    if (!entry.buttons) {
+      entry.buttons = new Set();
+    }
+    entry.buttons.add(button);
+    ensureButtonDefaults(button);
+    const download = findDownloadForKey(key);
+    if (download) {
+      setButtonState(button, download.status);
+    } else {
+      setButtonState(button, "default");
+    }
+  }
+
+  function ensureButtonDefaults(button) {
+    if (!button.dataset.gdlDefaultText) {
+      button.dataset.gdlDefaultText = button.textContent || "";
+    }
+    if (!button.dataset.gdlDefaultBg) {
+      button.dataset.gdlDefaultBg = button.style.background || "";
+    }
+    if (!button.dataset.gdlDefaultBorder) {
+      button.dataset.gdlDefaultBorder = button.style.borderColor || "";
+    }
+    if (!button.dataset.gdlDefaultColor) {
+      button.dataset.gdlDefaultColor = button.style.color || "";
+    }
+    if (!button.dataset.gdlDefaultDisabled) {
+      button.dataset.gdlDefaultDisabled = button.disabled ? "true" : "false";
+    }
+  }
+
+  function setButtonState(button, state) {
+    if (!button) {
+      return;
+    }
+    ensureButtonDefaults(button);
+    const normalizedState = state || "default";
+    button.dataset.gdlButtonState = normalizedState;
+    switch (normalizedState) {
+      case "queued":
+        applyButtonVisuals(button, "Queued ✓", "#198754", "#198754", "#ffffff", true);
+        break;
+      case "running":
+        applyButtonVisuals(button, "Downloading…", "#ffc107", "#ffc107", "#2d2200", true);
+        break;
+      case "succeeded":
+        applyButtonVisuals(button, "Downloaded ✓", "#198754", "#198754", "#ffffff", true);
+        break;
+      case "failed":
+        applyButtonVisuals(button, "Failed ✕", "#dc3545", "#dc3545", "#ffffff", false);
+        break;
+      default:
+        button.textContent = button.dataset.gdlDefaultText || "Send";
+        button.style.background = button.dataset.gdlDefaultBg || "";
+        button.style.borderColor = button.dataset.gdlDefaultBorder || "";
+        button.style.color = button.dataset.gdlDefaultColor || "";
+        button.disabled = button.dataset.gdlDefaultDisabled === "true";
+        break;
+    }
+  }
+
+  function applyButtonVisuals(button, text, background, border, color, disabled) {
+    button.textContent = text;
+    button.style.background = background;
+    button.style.borderColor = border;
+    button.style.color = color;
+    button.disabled = disabled;
+  }
+
+  function findDownloadForKey(key) {
+    if (!key) {
+      return null;
+    }
+    for (const download of panelState.downloads.values()) {
+      if (!download || !download.urls) {
+        continue;
+      }
+      const match = download.urls.some((url) => stripTitleParam(url) === key);
+      if (match) {
+        return download;
+      }
+    }
+    return null;
+  }
+
+  function updateTrackedButtonsForDownload(download) {
+    if (!download || !download.urls) {
+      return;
+    }
+    const status = download.status || "default";
+    download.urls.forEach((url) => {
+      const key = stripTitleParam(url);
+      const entry = trackedLinks.get(key);
+      if (!entry || !entry.buttons) {
+        return;
+      }
+      entry.buttons.forEach((button) => setButtonState(button, status));
+    });
+  }
+
+  function resetButtonsForDownload(download) {
+    if (!download || !download.urls) {
+      return;
+    }
+    download.urls.forEach((url) => {
+      const key = stripTitleParam(url);
+      const entry = trackedLinks.get(key);
+      if (!entry || !entry.buttons) {
+        return;
+      }
+      entry.buttons.forEach((button) => setButtonState(button, "default"));
+    });
+  }
+
+  function syncTrackedButtons() {
+    panelState.downloads.forEach((download) => {
+      updateTrackedButtonsForDownload(download);
+    });
+  }
