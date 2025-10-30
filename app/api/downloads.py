@@ -9,6 +9,7 @@ from app.api.security import require_token
 from app.config import settings
 from app.db import session_scope
 from app.models import DownloadCreate, DownloadRead
+from app.notifications import notification_manager
 from app.queue import get_queue
 from app.repositories.downloads import DownloadRepository
 
@@ -49,6 +50,7 @@ async def enqueue_download(
 
     download_id = uuid.uuid4()
     normalized_urls = [str(url) for url in payload.urls]
+    created_new = False
     with session_scope() as session:
         repo = DownloadRepository(session)
         existing = repo.find_active_by_urls(normalized_urls)
@@ -65,6 +67,7 @@ async def enqueue_download(
             post_title=payload.post_title,
             requested_at=datetime.utcnow(),
         )
+        created_new = True
 
     queue = get_queue()
     job_timeout = settings.job_timeout_seconds
@@ -75,6 +78,18 @@ async def enqueue_download(
         post_title=payload.post_title,
         job_timeout=job_timeout,
     )
+
+    if created_new:
+        await notification_manager.broadcast(
+            {
+                "type": "queued",
+                "download_id": str(download_id),
+                "urls": normalized_urls,
+                "post_title": payload.post_title,
+                "label": payload.label,
+                "queued_at": datetime.utcnow().isoformat() + "Z",
+            }
+        )
 
     return record
 
