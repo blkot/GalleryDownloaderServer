@@ -691,6 +691,14 @@
       });
       actionsRow.appendChild(open);
     }
+    if (download.status === "failed" && download.urls && download.urls.length) {
+      const retry = document.createElement("button");
+      retry.type = "button";
+      retry.className = "gdl-button";
+      retry.textContent = "Retry";
+      retry.addEventListener("click", () => retryDownload(download, retry));
+      actionsRow.appendChild(retry);
+    }
 
     entry.appendChild(mainRow);
     entry.appendChild(metaRow);
@@ -750,6 +758,71 @@
     }
   }
 
+  function retryDownload(download, button) {
+    if (!download || !download.urls || !download.urls.length) {
+      return;
+    }
+    const base = (config.apiBase || "").trim().replace(/\/+$/, "");
+    if (!base) {
+      alert("API base URL is not configured.");
+      return;
+    }
+    if (button) {
+      button.disabled = true;
+      button.textContent = "Retrying…";
+    }
+    const headers = {
+      "Content-Type": "application/json",
+    };
+    if (config.token) {
+      headers.Authorization = `Bearer ${config.token}`;
+    }
+    const payload = JSON.stringify({
+      urls: download.urls,
+      post_title: download.post_title,
+      label: download.label,
+    });
+    GM_xmlhttpRequest({
+      method: "POST",
+      url: `${base}/downloads`,
+      headers,
+      data: payload,
+      onload: (response) => {
+        if (response.status === 200 || response.status === 202) {
+          try {
+            const record = JSON.parse(response.responseText);
+            const normalized = normalizeDownloadRecord(record);
+            if (normalized) {
+              panelState.downloads.delete(download.id);
+              resetButtonsForDownload(download);
+              panelState.downloads.set(normalized.id, normalized);
+              updateTrackedButtonsForDownload(normalized);
+            }
+          } catch (error) {
+            console.debug("Failed to parse retry response", error);
+          }
+          renderDownloadPanel();
+          schedulePanelRefresh(1000);
+        } else {
+          console.error("Failed to retry download", response.status, response.statusText);
+          if (button) {
+            button.disabled = false;
+            button.textContent = "Retry";
+          }
+          alert(`Failed to retry download: ${response.status} ${response.statusText}`);
+        }
+      },
+      onerror: (error) => {
+        console.error("Retry request error", error);
+        if (button) {
+          button.disabled = false;
+          button.textContent = "Retry";
+        }
+        alert("Network error while retrying download.");
+      },
+    });
+  }
+
   function findTrackedElementForDownload(download) {
     if (!download || !download.urls) {
       return null;
@@ -785,14 +858,27 @@
     if (!download || !download.urls) {
       return false;
     }
-    return download.urls.some((url) => {
+    const matchesLink = download.urls.some((url) => {
       const key = stripTitleParam(url);
       const entry = trackedLinks.get(key);
-      if (entry && entry.threadTitle && panelState.threadTitle) {
+      if (!entry) {
+        return false;
+      }
+      if (entry.threadTitle && panelState.threadTitle && entry.threadTitle === panelState.threadTitle) {
         return true;
       }
-      return Boolean(entry);
+      return true;
     });
+    if (matchesLink) {
+      return true;
+    }
+    if (download.post_title && panelState.threadTitle) {
+      const normalizedPostTitle = sanitizeSegment(download.post_title);
+      if (normalizedPostTitle === panelState.threadTitle) {
+        return true;
+      }
+    }
+    return false;
   }
 
   function extractHostname(url) {
@@ -1445,16 +1531,33 @@
     if (!key) {
       return null;
     }
-    for (const download of panelState.downloads.values()) {
+    let candidate = null;
+    panelState.downloads.forEach((download) => {
       if (!download || !download.urls) {
-        continue;
+        return;
       }
       const match = download.urls.some((url) => stripTitleParam(url) === key);
-      if (match) {
-        return download;
+      if (!match) {
+        return;
       }
+      if (!candidate) {
+        candidate = download;
+        return;
+      }
+      if (toTimestamp(download.requested_at) >= toTimestamp(candidate.requested_at)) {
+        candidate = download;
+      }
+    });
+    return candidate;
+  }
+
+  function toTimestamp(value) {
+    if (!value) {
+      return 0;
     }
-    return null;
+    const date = new Date(value);
+    const time = date.getTime();
+    return Number.isNaN(time) ? 0 : time;
   }
 
   function updateTrackedButtonsForDownload(download) {
