@@ -889,15 +889,12 @@
     }
   }
 
-  function formatRelativeTime(isoString) {
-    if (!isoString) {
+  function formatRelativeTime(timestamp) {
+    const date = toDate(timestamp);
+    if (!date) {
       return "";
     }
     try {
-      const date = new Date(isoString);
-      if (Number.isNaN(date.getTime())) {
-        return isoString;
-      }
       const diffMs = Date.now() - date.getTime();
       const diffMinutes = Math.round(diffMs / 60000);
       if (diffMinutes < 1) {
@@ -1552,12 +1549,22 @@
   }
 
   function toTimestamp(value) {
+    const date = toDate(value);
+    if (!date) return 0;
+    return date.getTime();
+  }
+
+  function toDate(value) {
     if (!value) {
-      return 0;
+      return null;
     }
-    const date = new Date(value);
-    const time = date.getTime();
-    return Number.isNaN(time) ? 0 : time;
+    if (value instanceof Date && !Number.isNaN(value.getTime())) {
+      return value;
+    }
+    const normalized =
+      typeof value === "string" && !/[zZ]|[+\-]\d{2}:?\d{2}$/.test(value) ? `${value}Z` : value;
+    const date = new Date(normalized);
+    return Number.isNaN(date.getTime()) ? null : date;
   }
 
   function updateTrackedButtonsForDownload(download) {

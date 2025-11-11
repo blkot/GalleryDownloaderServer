@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Gallery Downloader – Dashboard</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="gd-header">
+      <div class="gd-header__title">
+        <h1>Gallery Downloader</h1>
+        <p class="gd-header__subtitle">Monitor, retry, and audit downloads</p>
+      </div>
+      <div class="gd-header__controls">
+        <label class="gd-field">
+          <span>API Base</span>
+          <input id="api-base-input" type="url" placeholder="https://example.com" />
+        </label>
+        <label class="gd-field">
+          <span>API Token</span>
+          <input id="api-token-input" type="password" placeholder="••••••" />
+        </label>
+        <button id="save-config-button">Save</button>
+      </div>
+    </header>
+
+    <main class="gd-main">
+      <section class="gd-toolbar">
+        <div class="gd-filters" id="status-filters">
+          <button data-filter="all" class="active">All</button>
+          <button data-filter="queued">Queued</button>
+          <button data-filter="running">Running</button>
+          <button data-filter="succeeded">Succeeded</button>
+          <button data-filter="failed">Failed</button>
+        </div>
+        <div class="gd-search">
+          <input id="search-input" type="search" placeholder="Search title, label, provider…" />
+          <button id="refresh-button">Refresh</button>
+        </div>
+      </section>
+
+      <section class="gd-content">
+        <div class="gd-table-wrapper">
+          <table class="gd-table" id="downloads-table">
+            <thead>
+              <tr>
+                <th>Title</th>
+                <th>Status</th>
+                <th>Queued</th>
+                <th>Finished</th>
+                <th>Files</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="downloads-table-body">
+              <tr>
+                <td colspan="6" class="gd-empty">Loading…</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <aside class="gd-detail" id="detail-panel">
+          <div class="gd-detail__placeholder">
+            <p>Select a download to inspect details.</p>
+          </div>
+        </aside>
+      </section>
+    </main>
+
+    <template id="download-row-template">
+      <tr class="gd-row">
+        <td class="gd-col-title">
+          <div class="gd-title"></div>
+          <div class="gd-subtitle"></div>
+        </td>
+        <td><span class="gd-status-pill"></span></td>
+        <td class="gd-col-queued"></td>
+        <td class="gd-col-finished"></td>
+        <td class="gd-col-count"></td>
+        <td class="gd-col-actions"></td>
+      </tr>
+    </template>
+
+    <script type="module" src="./scripts/app.js"></script>
+  </body>
+</html>

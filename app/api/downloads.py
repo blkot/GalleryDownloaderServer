@@ -8,7 +8,7 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response, st
 from app.api.security import require_token
 from app.config import settings
 from app.db import session_scope
-from app.models import DownloadCreate, DownloadRead
+from app.models import DownloadCreate, DownloadRead, DownloadStatus
 from app.notifications import notification_manager
 from app.queue import get_queue
 from app.repositories.downloads import DownloadRepository
@@ -109,3 +109,56 @@ async def list_downloads() -> list[DownloadRead]:
     with session_scope() as session:
         repo = DownloadRepository(session)
         return repo.list()
+
+
+@router.post("/{download_id}/retry", response_model=DownloadRead)
+async def retry_download(download_id: uuid.UUID) -> DownloadRead:
+    with session_scope() as session:
+        repo = DownloadRepository(session)
+        entity = repo.get_entity(download_id)
+        if entity is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Download not found")
+        if entity.status not in {DownloadStatus.failed, DownloadStatus.succeeded}:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Only completed or failed downloads can be retried.",
+            )
+        record = repo.reset_for_retry(download_id, requested_at=datetime.utcnow())
+        assert record is not None
+
+    queue = get_queue()
+    queue.enqueue(
+        "app.worker.process_download",
+        download_id=str(download_id),
+        urls=record.urls,
+        post_title=record.post_title,
+        job_timeout=settings.job_timeout_seconds,
+    )
+
+    await notification_manager.broadcast(
+        {
+            "type": "queued",
+            "download_id": str(download_id),
+            "urls": record.urls,
+            "post_title": record.post_title,
+            "label": record.label,
+            "queued_at": datetime.utcnow().isoformat() + "Z",
+        }
+    )
+
+    return record
+
+
+@router.delete("/{download_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_download(download_id: uuid.UUID) -> None:
+    with session_scope() as session:
+        repo = DownloadRepository(session)
+        entity = repo.get_entity(download_id)
+        if entity is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Download not found")
+        if entity.status in {DownloadStatus.queued, DownloadStatus.running}:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Active downloads cannot be deleted.",
+            )
+        repo.delete(download_id)

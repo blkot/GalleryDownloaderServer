@@ -86,12 +86,34 @@ class DownloadRepository:
                 return entity
         return None
 
-    def delete(self, download_id: uuid.UUID) -> None:
+    def delete(self, download_id: uuid.UUID) -> bool:
         entity = self.session.exec(select(Download).where(Download.id == download_id)).first()
         if entity is None:
-            return
+            return False
         self.session.delete(entity)
         self.session.commit()
+        return True
+
+    def reset_for_retry(self, download_id: uuid.UUID, *, requested_at: datetime) -> Optional[DownloadRead]:
+        entity = self.session.exec(select(Download).where(Download.id == download_id)).first()
+        if entity is None:
+            return None
+
+        items = self.session.exec(select(DownloadItem).where(DownloadItem.download_id == download_id)).all()
+        for item in items:
+            self.session.delete(item)
+
+        entity.status = DownloadStatus.queued
+        entity.requested_at = requested_at
+        entity.started_at = None
+        entity.finished_at = None
+        entity.failure_reason = None
+        entity.output_path = None
+
+        self.session.add(entity)
+        self.session.commit()
+        self.session.refresh(entity)
+        return self._to_read(entity)
 
     def update_status(
         self,
