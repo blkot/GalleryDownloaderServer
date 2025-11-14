@@ -21,7 +21,7 @@ manager = DownloadManager(settings.storage_root)
 
 def process_download(*, download_id: str, urls: Iterable[str], post_title: Optional[str] = None) -> None:
     identifier = uuid.UUID(download_id)
-    download_urls = list(urls)
+    download_urls = [str(url) for url in urls]
     current_post_title: Optional[str] = post_title
 
     with session_scope() as session:

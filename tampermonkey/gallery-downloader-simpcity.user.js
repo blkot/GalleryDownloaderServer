@@ -175,6 +175,10 @@
       background: rgba(220, 53, 69, 0.2);
       color: #f2a7af;
     }
+    #gdl-status-panel .gdl-status-pill[data-status="cancelled"] {
+      background: rgba(108, 117, 125, 0.18);
+      color: #d4d9de;
+    }
     #gdl-status-panel .gdl-entry-meta {
       display: flex;
       flex-wrap: wrap;
@@ -550,7 +554,7 @@
       });
 
     const completed = visibleDownloads
-      .filter((item) => item.status === "succeeded" || item.status === "failed")
+      .filter((item) => item.status === "succeeded" || item.status === "failed" || item.status === "cancelled")
       .sort((a, b) => {
         const aTime = a.finished_at ? new Date(a.finished_at).getTime() : 0;
         const bTime = b.finished_at ? new Date(b.finished_at).getTime() : 0;
@@ -618,7 +622,7 @@
       progress: "running",
       succeeded: "succeeded",
       failed: "failed",
-      cancelled: "failed",
+      cancelled: "cancelled",
     };
     const status = statusMap[eventPayload.type] || "queued";
     return {
@@ -691,6 +695,26 @@
       });
       actionsRow.appendChild(open);
     }
+    if (download.status === "queued") {
+      const cancel = document.createElement("button");
+      cancel.type = "button";
+      cancel.className = "gdl-button";
+      cancel.textContent = "Cancel";
+      cancel.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        cancelDownload(download, cancel);
+      });
+      actionsRow.appendChild(cancel);
+    }
+    if (download.status === "failed" && download.urls && download.urls.length) {
+      const retry = document.createElement("button");
+      retry.type = "button";
+      retry.className = "gdl-button";
+      retry.textContent = "Retry";
+      retry.addEventListener("click", () => retryDownload(download, retry));
+      actionsRow.appendChild(retry);
+    }
 
     entry.appendChild(mainRow);
     entry.appendChild(metaRow);
@@ -750,6 +774,128 @@
     }
   }
 
+  function retryDownload(download, button) {
+    if (!download || !download.urls || !download.urls.length) {
+      return;
+    }
+    const base = (config.apiBase || "").trim().replace(/\/+$/, "");
+    if (!base) {
+      alert("API base URL is not configured.");
+      return;
+    }
+    if (button) {
+      button.disabled = true;
+      button.textContent = "Retrying…";
+    }
+    const headers = {
+      "Content-Type": "application/json",
+    };
+    if (config.token) {
+      headers.Authorization = `Bearer ${config.token}`;
+    }
+    const payload = JSON.stringify({
+      urls: download.urls,
+      post_title: download.post_title,
+      label: download.label,
+    });
+    GM_xmlhttpRequest({
+      method: "POST",
+      url: `${base}/downloads`,
+      headers,
+      data: payload,
+      onload: (response) => {
+        if (response.status === 200 || response.status === 202) {
+          try {
+            const record = JSON.parse(response.responseText);
+            const normalized = normalizeDownloadRecord(record);
+            if (normalized) {
+              panelState.downloads.delete(download.id);
+              resetButtonsForDownload(download);
+              panelState.downloads.set(normalized.id, normalized);
+              updateTrackedButtonsForDownload(normalized);
+            }
+          } catch (error) {
+            console.debug("Failed to parse retry response", error);
+          }
+          renderDownloadPanel();
+          schedulePanelRefresh(1000);
+        } else {
+          console.error("Failed to retry download", response.status, response.statusText);
+          if (button) {
+            button.disabled = false;
+            button.textContent = "Retry";
+          }
+          alert(`Failed to retry download: ${response.status} ${response.statusText}`);
+        }
+      },
+      onerror: (error) => {
+        console.error("Retry request error", error);
+        if (button) {
+          button.disabled = false;
+          button.textContent = "Retry";
+        }
+        alert("Network error while retrying download.");
+      },
+    });
+  }
+
+  function cancelDownload(download, button) {
+    if (!download || !download.id) {
+      return;
+    }
+    const base = (config.apiBase || "").trim().replace(/\/+$/, "");
+    if (!base) {
+      alert("API base URL is not configured.");
+      return;
+    }
+    if (button) {
+      button.disabled = true;
+      button.textContent = "Cancelling…";
+    }
+    const headers = {
+      Accept: "application/json",
+    };
+    if (config.token) {
+      headers.Authorization = `Bearer ${config.token}`;
+    }
+    GM_xmlhttpRequest({
+      method: "POST",
+      url: `${base}/downloads/${download.id}/cancel`,
+      headers,
+      onload: (response) => {
+        if (response.status >= 200 && response.status < 300) {
+          try {
+            const record = JSON.parse(response.responseText);
+            const normalized = normalizeDownloadRecord(record);
+            if (normalized) {
+              panelState.downloads.set(normalized.id, normalized);
+              updateTrackedButtonsForDownload(normalized);
+            }
+          } catch (error) {
+            console.debug("Failed to parse cancel response", error);
+          }
+          renderDownloadPanel();
+          schedulePanelRefresh(1000);
+        } else {
+          console.error("Failed to cancel download", response.status, response.statusText);
+          if (button) {
+            button.disabled = false;
+            button.textContent = "Cancel";
+          }
+          alert(`Failed to cancel download: ${response.status} ${response.statusText}`);
+        }
+      },
+      onerror: (error) => {
+        console.error("Cancel request error", error);
+        if (button) {
+          button.disabled = false;
+          button.textContent = "Cancel";
+        }
+        alert("Network error while cancelling download.");
+      },
+    });
+  }
+
   function findTrackedElementForDownload(download) {
     if (!download || !download.urls) {
       return null;
@@ -785,14 +931,27 @@
     if (!download || !download.urls) {
       return false;
     }
-    return download.urls.some((url) => {
+    const matchesLink = download.urls.some((url) => {
       const key = stripTitleParam(url);
       const entry = trackedLinks.get(key);
-      if (entry && entry.threadTitle && panelState.threadTitle) {
+      if (!entry) {
+        return false;
+      }
+      if (entry.threadTitle && panelState.threadTitle && entry.threadTitle === panelState.threadTitle) {
         return true;
       }
-      return Boolean(entry);
+      return true;
     });
+    if (matchesLink) {
+      return true;
+    }
+    if (download.post_title && panelState.threadTitle) {
+      const normalizedPostTitle = sanitizeSegment(download.post_title);
+      if (normalizedPostTitle === panelState.threadTitle) {
+        return true;
+      }
+    }
+    return false;
   }
 
   function extractHostname(url) {
@@ -803,15 +962,12 @@
     }
   }
 
-  function formatRelativeTime(isoString) {
-    if (!isoString) {
+  function formatRelativeTime(timestamp) {
+    const date = toDate(timestamp);
+    if (!date) {
       return "";
     }
     try {
-      const date = new Date(isoString);
-      if (Number.isNaN(date.getTime())) {
-        return isoString;
-      }
       const diffMs = Date.now() - date.getTime();
       const diffMinutes = Math.round(diffMs / 60000);
       if (diffMinutes < 1) {
@@ -1423,6 +1579,9 @@
       case "failed":
         applyButtonVisuals(button, "Failed ✕", "#dc3545", "#dc3545", "#ffffff", false);
         break;
+      case "cancelled":
+        applyButtonVisuals(button, "Cancelled", "#6c757d", "#6c757d", "#ffffff", false);
+        break;
       default:
         button.textContent = button.dataset.gdlDefaultText || "Send";
         button.style.background = button.dataset.gdlDefaultBg || "";
@@ -1445,16 +1604,43 @@
     if (!key) {
       return null;
     }
-    for (const download of panelState.downloads.values()) {
+    let candidate = null;
+    panelState.downloads.forEach((download) => {
       if (!download || !download.urls) {
-        continue;
+        return;
       }
       const match = download.urls.some((url) => stripTitleParam(url) === key);
-      if (match) {
-        return download;
+      if (!match) {
+        return;
       }
+      if (!candidate) {
+        candidate = download;
+        return;
+      }
+      if (toTimestamp(download.requested_at) >= toTimestamp(candidate.requested_at)) {
+        candidate = download;
+      }
+    });
+    return candidate;
+  }
+
+  function toTimestamp(value) {
+    const date = toDate(value);
+    if (!date) return 0;
+    return date.getTime();
+  }
+
+  function toDate(value) {
+    if (!value) {
+      return null;
     }
-    return null;
+    if (value instanceof Date && !Number.isNaN(value.getTime())) {
+      return value;
+    }
+    const normalized =
+      typeof value === "string" && !/[zZ]|[+\-]\d{2}:?\d{2}$/.test(value) ? `${value}Z` : value;
+    const date = new Date(normalized);
+    return Number.isNaN(date.getTime()) ? null : date;
   }
 
   function updateTrackedButtonsForDownload(download) {

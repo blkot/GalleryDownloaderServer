@@ -1,4 +1,8 @@
+from pathlib import Path
+
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.api import api_router
 from app.config import settings
@@ -19,6 +23,26 @@ def create_app() -> FastAPI:
         return {"status": "ok"}
 
     app.include_router(api_router)
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[
+            "http://127.0.0.1:8081",
+            "http://localhost:8081",
+        ],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    frontend_path = Path(__file__).resolve().parent.parent / "frontend"
+    if frontend_path.exists():
+        app.mount(
+            "/ui",
+            StaticFiles(directory=str(frontend_path), html=True),
+            name="frontend",
+        )
+
     return app
 
 

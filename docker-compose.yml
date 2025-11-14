@@ -1,22 +1,22 @@
-version: "3.9"
-
 services:
   api:
     build: .
     image: gallery-downloader-api:latest
+    user: "${GDL_RUN_USER:-999}:${GDL_RUN_GROUP:-999}"
+    restart: unless-stopped
     environment:
-      GDL_API_TOKEN: ${GDL_API_TOKEN:-123456}
-      GDL_REDIS_URL: ${GDL_REDIS_URL:-redis://redis:6379/0}
-      GDL_DATABASE_URL: ${GDL_DATABASE_URL:-sqlite:///data/gallery.db}
-      GDL_STORAGE_ROOT: ${GDL_STORAGE_ROOT:-/data/downloads}
-      GDL_GALLERY_DL_CONFIG_PATH: /etc/gallery-dl/config.json
+      GDL_API_TOKEN: ${GDL_API_TOKEN:?err}
+      GDL_REDIS_URL: ${GDL_REDIS_URL:?err}
+      GDL_DATABASE_URL: ${GDL_DATABASE_URL:-sqlite:////data/gallery.db}
+      GDL_STORAGE_ROOT: ${GDL_STORAGE_ROOT:-/downloads}
       GDL_GALLERY_DL_EXTRA_ARGS: ${GDL_GALLERY_DL_EXTRA_ARGS:-}
-      GDL_JOB_TIMEOUT_SECONDS: ${GDL_JOB_TIMEOUT_SECONDS:-1800}
+      GDL_JOB_TIMEOUT_SECONDS: ${GDL_JOB_TIMEOUT_SECONDS:-0}
     ports:
       - "8080:8080"
     volumes:
-      - gallery_data:/data
-      - ${GALLERY_DL_CONFIG_PATH:-./config/gallery-dl.json}:/etc/gallery-dl/config.json:ro
+      - ./data:/data                           # gallery.db + runtime state
+      - ./config/gallery-dl.json:/etc/gallery-dl/config.json:ro
+      - /share/CACHEDEV2_DATA/Cars2/GDL:/downloads
     depends_on:
       - redis
 
@@ -24,27 +24,27 @@ services:
     build: .
     image: gallery-downloader-worker:latest
     entrypoint: ["python", "-m", "app.worker"]
+    user: "${GDL_RUN_USER:-999}:${GDL_RUN_GROUP:-999}"
+    restart: unless-stopped
     environment:
-      GDL_API_TOKEN: ${GDL_API_TOKEN:-123456}
-      GDL_REDIS_URL: ${GDL_REDIS_URL:-redis://redis:6379/0}
-      GDL_DATABASE_URL: ${GDL_DATABASE_URL:-sqlite:///data/gallery.db}
-      GDL_STORAGE_ROOT: ${GDL_STORAGE_ROOT:-/data/downloads}
-      GDL_GALLERY_DL_CONFIG_PATH: /etc/gallery-dl/config.json
+      GDL_API_TOKEN: ${GDL_API_TOKEN:?err}
+      GDL_REDIS_URL: ${GDL_REDIS_URL:?err}
+      GDL_DATABASE_URL: ${GDL_DATABASE_URL:-sqlite:////data/gallery.db}
+      GDL_STORAGE_ROOT: ${GDL_STORAGE_ROOT:-/downloads}
       GDL_GALLERY_DL_EXTRA_ARGS: ${GDL_GALLERY_DL_EXTRA_ARGS:-}
-      GDL_JOB_TIMEOUT_SECONDS: ${GDL_JOB_TIMEOUT_SECONDS:-1800}
+      GDL_JOB_TIMEOUT_SECONDS: ${GDL_JOB_TIMEOUT_SECONDS:-0}
     volumes:
-      - gallery_data:/data
-      - ${GALLERY_DL_CONFIG_PATH:-./config/gallery-dl.json}:/etc/gallery-dl/config.json:ro
+      - ./data:/data
+      - ./config/gallery-dl.json:/etc/gallery-dl/config.json:ro
+      - /share/CACHEDEV2_DATA/Cars2/GDL:/downloads
     depends_on:
       - redis
 
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
+    container_name: gdl_redis
+    restart: unless-stopped
+    command: ["redis-server", "--save", "60", "1"]
     volumes:
-      - redis_data:/data
+      - ./redis-data:/data
 
-volumes:
-  gallery_data:
-  redis_data:
