@@ -175,6 +175,10 @@
       background: rgba(220, 53, 69, 0.2);
       color: #f2a7af;
     }
+    #gdl-status-panel .gdl-status-pill[data-status="cancelled"] {
+      background: rgba(108, 117, 125, 0.18);
+      color: #d4d9de;
+    }
     #gdl-status-panel .gdl-entry-meta {
       display: flex;
       flex-wrap: wrap;
@@ -550,7 +554,7 @@
       });
 
     const completed = visibleDownloads
-      .filter((item) => item.status === "succeeded" || item.status === "failed")
+      .filter((item) => item.status === "succeeded" || item.status === "failed" || item.status === "cancelled")
       .sort((a, b) => {
         const aTime = a.finished_at ? new Date(a.finished_at).getTime() : 0;
         const bTime = b.finished_at ? new Date(b.finished_at).getTime() : 0;
@@ -618,7 +622,7 @@
       progress: "running",
       succeeded: "succeeded",
       failed: "failed",
-      cancelled: "failed",
+      cancelled: "cancelled",
     };
     const status = statusMap[eventPayload.type] || "queued";
     return {
@@ -690,6 +694,18 @@
         window.open(download.urls[0], "_blank", "noopener");
       });
       actionsRow.appendChild(open);
+    }
+    if (download.status === "queued") {
+      const cancel = document.createElement("button");
+      cancel.type = "button";
+      cancel.className = "gdl-button";
+      cancel.textContent = "Cancel";
+      cancel.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        cancelDownload(download, cancel);
+      });
+      actionsRow.appendChild(cancel);
     }
     if (download.status === "failed" && download.urls && download.urls.length) {
       const retry = document.createElement("button");
@@ -819,6 +835,63 @@
           button.textContent = "Retry";
         }
         alert("Network error while retrying download.");
+      },
+    });
+  }
+
+  function cancelDownload(download, button) {
+    if (!download || !download.id) {
+      return;
+    }
+    const base = (config.apiBase || "").trim().replace(/\/+$/, "");
+    if (!base) {
+      alert("API base URL is not configured.");
+      return;
+    }
+    if (button) {
+      button.disabled = true;
+      button.textContent = "Cancelling…";
+    }
+    const headers = {
+      Accept: "application/json",
+    };
+    if (config.token) {
+      headers.Authorization = `Bearer ${config.token}`;
+    }
+    GM_xmlhttpRequest({
+      method: "POST",
+      url: `${base}/downloads/${download.id}/cancel`,
+      headers,
+      onload: (response) => {
+        if (response.status >= 200 && response.status < 300) {
+          try {
+            const record = JSON.parse(response.responseText);
+            const normalized = normalizeDownloadRecord(record);
+            if (normalized) {
+              panelState.downloads.set(normalized.id, normalized);
+              updateTrackedButtonsForDownload(normalized);
+            }
+          } catch (error) {
+            console.debug("Failed to parse cancel response", error);
+          }
+          renderDownloadPanel();
+          schedulePanelRefresh(1000);
+        } else {
+          console.error("Failed to cancel download", response.status, response.statusText);
+          if (button) {
+            button.disabled = false;
+            button.textContent = "Cancel";
+          }
+          alert(`Failed to cancel download: ${response.status} ${response.statusText}`);
+        }
+      },
+      onerror: (error) => {
+        console.error("Cancel request error", error);
+        if (button) {
+          button.disabled = false;
+          button.textContent = "Cancel";
+        }
+        alert("Network error while cancelling download.");
       },
     });
   }
@@ -1505,6 +1578,9 @@
         break;
       case "failed":
         applyButtonVisuals(button, "Failed ✕", "#dc3545", "#dc3545", "#ffffff", false);
+        break;
+      case "cancelled":
+        applyButtonVisuals(button, "Cancelled", "#6c757d", "#6c757d", "#ffffff", false);
         break;
       default:
         button.textContent = button.dataset.gdlDefaultText || "Send";

@@ -1,9 +1,11 @@
 import uuid
 from datetime import datetime
-
 from typing import List, Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Response, status
+from rq import Queue
+from rq.exceptions import InvalidJobOperation
+from rq.job import Job
 
 from app.api.security import require_token
 from app.config import settings
@@ -69,15 +71,7 @@ async def enqueue_download(
         )
         created_new = True
 
-    queue = get_queue()
-    job_timeout = settings.job_timeout_seconds
-    queue.enqueue(
-        "app.worker.process_download",
-        download_id=str(download_id),
-        urls=normalized_urls,
-        post_title=payload.post_title,
-        job_timeout=job_timeout,
-    )
+    _enqueue_download_job(download_id, normalized_urls, payload.post_title)
 
     if created_new:
         await notification_manager.broadcast(
@@ -126,14 +120,7 @@ async def retry_download(download_id: uuid.UUID) -> DownloadRead:
         record = repo.reset_for_retry(download_id, requested_at=datetime.utcnow())
         assert record is not None
 
-    queue = get_queue()
-    queue.enqueue(
-        "app.worker.process_download",
-        download_id=str(download_id),
-        urls=record.urls,
-        post_title=record.post_title,
-        job_timeout=settings.job_timeout_seconds,
-    )
+    _enqueue_download_job(download_id, record.urls, record.post_title)
 
     await notification_manager.broadcast(
         {
@@ -143,6 +130,36 @@ async def retry_download(download_id: uuid.UUID) -> DownloadRead:
             "post_title": record.post_title,
             "label": record.label,
             "queued_at": datetime.utcnow().isoformat() + "Z",
+        }
+    )
+
+    return record
+
+
+@router.post("/{download_id}/cancel", response_model=DownloadRead)
+async def cancel_download(download_id: uuid.UUID) -> DownloadRead:
+    with session_scope() as session:
+        repo = DownloadRepository(session)
+        entity = repo.get_entity(download_id)
+        if entity is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Download not found")
+        if entity.status != DownloadStatus.queued:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Only queued downloads can be cancelled.",
+            )
+        record = repo.cancel(download_id, finished_at=datetime.utcnow())
+
+    _remove_pending_job(download_id)
+
+    await notification_manager.broadcast(
+        {
+            "type": "cancelled",
+            "download_id": str(download_id),
+            "urls": record.urls if record else [],
+            "post_title": record.post_title if record else None,
+            "label": record.label if record else None,
+            "finished_at": datetime.utcnow().isoformat() + "Z",
         }
     )
 
@@ -162,3 +179,40 @@ async def delete_download(download_id: uuid.UUID) -> None:
                 detail="Active downloads cannot be deleted.",
             )
         repo.delete(download_id)
+
+
+def _enqueue_download_job(download_id: uuid.UUID, urls: List[str], post_title: Optional[str]) -> None:
+    queue = get_queue()
+    _remove_pending_job(download_id, queue)
+    queue.enqueue(
+        "app.worker.process_download",
+        download_id=str(download_id),
+        urls=urls,
+        post_title=post_title,
+        job_timeout=settings.job_timeout_seconds,
+    )
+
+
+def _remove_pending_job(download_id: uuid.UUID, queue: Optional[Queue] = None) -> bool:
+    target_queue = queue or get_queue()
+    job = _find_job_by_download(target_queue, download_id)
+    if job is None:
+        return False
+    try:
+        job.cancel()
+    except InvalidJobOperation:
+        # Job might already be cancelled or finished; ignore and continue cleanup.
+        pass
+    job.delete()
+    return True
+
+
+def _find_job_by_download(queue: Queue, download_id: uuid.UUID) -> Optional[Job]:
+    target = str(download_id)
+    for job_id in queue.get_job_ids():
+        job = queue.fetch_job(job_id)
+        if job is None:
+            continue
+        if (job.kwargs or {}).get("download_id") == target:
+            return job
+    return None

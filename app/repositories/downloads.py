@@ -115,6 +115,17 @@ class DownloadRepository:
         self.session.refresh(entity)
         return self._to_read(entity)
 
+    def cancel(self, download_id: uuid.UUID, *, finished_at: datetime) -> Optional[DownloadRead]:
+        entity = self.session.exec(select(Download).where(Download.id == download_id)).first()
+        if entity is None:
+            return None
+        entity.status = DownloadStatus.cancelled
+        entity.finished_at = finished_at
+        self.session.add(entity)
+        self.session.commit()
+        self.session.refresh(entity)
+        return self._to_read(entity)
+
     def update_status(
         self,
         download_id: uuid.UUID,

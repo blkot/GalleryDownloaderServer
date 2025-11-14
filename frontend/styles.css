@@ -192,9 +192,24 @@ button {
   color: var(--gd-success);
 }
 
+.gd-status-pill[data-status="queued"] {
+  background: rgba(58, 134, 255, 0.18);
+  color: var(--gd-accent);
+}
+
+.gd-status-pill[data-status="running"] {
+  background: rgba(255, 193, 7, 0.2);
+  color: #ffd166;
+}
+
 .gd-status-pill[data-status="failed"] {
   background: rgba(239, 71, 111, 0.15);
   color: var(--gd-failed);
+}
+
+.gd-status-pill[data-status="cancelled"] {
+  background: rgba(167, 176, 192, 0.15);
+  color: var(--gd-muted);
 }
 
 .gd-col-actions button {
