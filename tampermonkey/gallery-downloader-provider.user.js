@@ -56,6 +56,11 @@
     token: GM_getValue("gdl_token", "changeme"),
   };
 
+  let currentContext = {
+    downloadUrl: window.location.href,
+    postTitle: null,
+  };
+
   function whenDocumentReady(callback) {
     if (document.readyState === "loading") {
       document.addEventListener("DOMContentLoaded", callback, { once: true });
@@ -161,6 +166,13 @@
     }
   }
 
+  function contextsMatch(a, b) {
+    if (!a || !b) {
+      return false;
+    }
+    return a.downloadUrl === b.downloadUrl && a.postTitle === b.postTitle;
+  }
+
   function parseProviderContext() {
     try {
       const normalized = normalizeProviderUrl(window.location.href);
@@ -254,6 +266,9 @@
     if (!button || !context) {
       return;
     }
+    if (!contextsMatch(currentContext, context)) {
+      currentContext = context;
+    }
     const { downloadUrl, postTitle } = context;
     button.dataset.gdlUrl = attachTitleParam(downloadUrl, postTitle);
     button.dataset.gdlTitle = postTitle || "";
@@ -291,8 +306,13 @@
     });
 
     button.addEventListener("click", (event) => {
-      const downloadUrl = button.dataset.gdlUrl || window.location.href;
-      const postTitle = button.dataset.gdlTitle || null;
+      if (event && event.isTrusted === false) {
+        console.warn("Ignoring synthetic click on provider helper button.");
+        return;
+      }
+      const context = currentContext || parseProviderContext();
+      const downloadUrl = context.downloadUrl || window.location.href;
+      const postTitle = context.postTitle || null;
       sendDownloadRequest(downloadUrl, postTitle, button, event);
     });
 
@@ -307,15 +327,19 @@
 
     const handleLocationChange = () => {
       const updated = parseProviderContext();
-      updateProviderButton(button, updated);
+      if (!contextsMatch(currentContext, updated)) {
+        updateProviderButton(button, updated);
+      }
     };
 
     window.addEventListener("popstate", handleLocationChange);
     window.addEventListener("hashchange", handleLocationChange);
 
     const observer = new MutationObserver(() => {
-      const current = parseProviderContext();
-      updateProviderButton(button, current);
+      const nextContext = parseProviderContext();
+      if (!contextsMatch(currentContext, nextContext)) {
+        updateProviderButton(button, nextContext);
+      }
     });
     observer.observe(document.body, { childList: true, subtree: true });
   }

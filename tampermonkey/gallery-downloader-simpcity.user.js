@@ -234,7 +234,7 @@
     listContainer: null,
     toggleButton: null,
     collapsed: GM_getValue("gdl_panel_collapsed", false),
-    filterMode: GM_getValue(PANEL_FILTER_STORAGE_KEY, "thread"),
+    filterMode: GM_getValue(PANEL_FILTER_STORAGE_KEY, "all"),
     filterButtons: new Map(),
     downloads: new Map(),
     autoRefreshTimer: null,
@@ -316,7 +316,7 @@
   function initDownloadPanel(threadTitle) {
     panelState.threadTitle = threadTitle;
     if (!["thread", "all"].includes(panelState.filterMode)) {
-      panelState.filterMode = "thread";
+      panelState.filterMode = "all";
     }
     ensurePanelStyles();
     if (!panelState.container) {
@@ -560,7 +560,7 @@
         const bTime = b.finished_at ? new Date(b.finished_at).getTime() : 0;
         return bTime - aTime;
       })
-      .slice(0, 10);
+      .slice(0, 20);
 
     if (active.length) {
       container.appendChild(buildSectionHeader(`Active • ${active.length}`));
@@ -667,7 +667,7 @@
     if (download.status === "running" && download.started_at) {
       metaRow.appendChild(buildMetaItem(`Started: ${formatRelativeTime(download.started_at)}`));
     }
-    if ((download.status === "succeeded" || download.status === "failed") && download.finished_at) {
+    if ((download.status === "succeeded" || download.status === "failed" || download.status === "cancelled") && download.finished_at) {
       metaRow.appendChild(buildMetaItem(`Finished: ${formatRelativeTime(download.finished_at)}`));
     }
     if (download.status === "failed" && download.failure_reason) {
@@ -707,7 +707,7 @@
       });
       actionsRow.appendChild(cancel);
     }
-    if (download.status === "failed" && download.urls && download.urls.length) {
+    if ((download.status === "failed" || download.status === "cancelled") && download.urls && download.urls.length) {
       const retry = document.createElement("button");
       retry.type = "button";
       retry.className = "gdl-button";
@@ -945,10 +945,28 @@
     if (matchesLink) {
       return true;
     }
-    if (download.post_title && panelState.threadTitle) {
-      const normalizedPostTitle = sanitizeSegment(download.post_title);
-      if (normalizedPostTitle === panelState.threadTitle) {
-        return true;
+
+    if (panelState.threadTitle) {
+      const normalizedThread = panelState.threadTitle;
+      if (download.post_title) {
+        const normalizedPostTitle = sanitizeSegment(download.post_title);
+        if (
+          normalizedPostTitle === normalizedThread ||
+          normalizedPostTitle.includes(normalizedThread) ||
+          normalizedThread.includes(normalizedPostTitle)
+        ) {
+          return true;
+        }
+      }
+      if (download.label) {
+        const normalizedLabel = sanitizeSegment(download.label);
+        if (
+          normalizedLabel === normalizedThread ||
+          normalizedLabel.includes(normalizedThread) ||
+          normalizedThread.includes(normalizedLabel)
+        ) {
+          return true;
+        }
       }
     }
     return false;
