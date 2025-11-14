@@ -112,10 +112,10 @@ async def retry_download(download_id: uuid.UUID) -> DownloadRead:
         entity = repo.get_entity(download_id)
         if entity is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Download not found")
-        if entity.status not in {DownloadStatus.failed, DownloadStatus.succeeded}:
+        if entity.status not in {DownloadStatus.failed, DownloadStatus.succeeded, DownloadStatus.cancelled}:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="Only completed or failed downloads can be retried.",
+                detail="Only completed, failed, or cancelled downloads can be retried.",
             )
         record = repo.reset_for_retry(download_id, requested_at=datetime.utcnow())
         assert record is not None
