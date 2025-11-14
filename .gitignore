@@ -39,3 +39,7 @@ scripts/
 
 # Codex folder
 .codex/
+
+
+# temp files
+temp.txt
