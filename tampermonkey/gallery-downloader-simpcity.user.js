@@ -4,6 +4,10 @@
 // @version      0.6.0
 // @description  Decorate SimpCity threads with Gallery Downloader actions and normalised provider links.
 // @author       You
+// @homepageURL  https://github.com/blkot/GalleryDownloaderServer
+// @supportURL   https://github.com/blkot/GalleryDownloaderServer/issues
+// @updateURL    https://raw.githubusercontent.com/blkot/GalleryDownloaderServer/main/tampermonkey/gallery-downloader-simpcity.user.js
+// @downloadURL  https://raw.githubusercontent.com/blkot/GalleryDownloaderServer/main/tampermonkey/gallery-downloader-simpcity.user.js
 // @match        https://simpcity.cr/threads/*
 // @match        https://simpcity.su/threads/*
 // @match        https://simpcity.gs/threads/*

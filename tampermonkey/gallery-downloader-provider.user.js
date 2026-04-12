@@ -4,6 +4,10 @@
 // @version      0.5.0
 // @description  Offer a floating “Send to Downloader” button on supported gallery-dl provider domains.
 // @author       You
+// @homepageURL  https://github.com/blkot/GalleryDownloaderServer
+// @supportURL   https://github.com/blkot/GalleryDownloaderServer/issues
+// @updateURL    https://raw.githubusercontent.com/blkot/GalleryDownloaderServer/main/tampermonkey/gallery-downloader-provider.user.js
+// @downloadURL  https://raw.githubusercontent.com/blkot/GalleryDownloaderServer/main/tampermonkey/gallery-downloader-provider.user.js
 // @match        https://catbox.moe/*
 // @match        https://*.catbox.moe/*
 // @match        https://pixeldrain.com/*
