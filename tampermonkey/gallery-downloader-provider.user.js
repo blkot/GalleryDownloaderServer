@@ -1,9 +1,11 @@
 // ==UserScript==
 // @name         Gallery Downloader – Provider Helper
 // @namespace    https://github.com/xanta/gallerydownloaderserver
-// @version      0.4.0
-// @description  Offer a floating “Send to Downloader” button on supported provider domains.
+// @version      0.5.0
+// @description  Offer a floating “Send to Downloader” button on supported gallery-dl provider domains.
 // @author       You
+// @match        https://catbox.moe/*
+// @match        https://*.catbox.moe/*
 // @match        https://pixeldrain.com/*
 // @match        https://*.pixeldrain.com/*
 // @match        https://gofile.io/*
@@ -24,10 +26,22 @@
 // @match        https://*.cyberdrop.cc/*
 // @match        https://cyberdrop.to/*
 // @match        https://*.cyberdrop.to/*
+// @match        https://cyberdrop.cr/*
+// @match        https://*.cyberdrop.cr/*
+// @match        https://cyberfile.me/*
+// @match        https://*.cyberfile.me/*
+// @match        https://mixdrop.ag/*
+// @match        https://*.mixdrop.ag/*
 // @match        https://saint2.cr/*
 // @match        https://*.saint2.cr/*
 // @match        https://saint2.su/*
 // @match        https://*.saint2.su/*
+// @match        https://turbo.cr/*
+// @match        https://*.turbo.cr/*
+// @match        https://uploadir.com/*
+// @match        https://*.uploadir.com/*
+// @match        https://urlgalleries.com/*
+// @match        https://*.urlgalleries.com/*
 // @match        https://redgifs.com/*
 // @match        https://*.redgifs.com/*
 // @exclude      https://simpcity.cr/*
@@ -121,17 +135,15 @@
     try {
       const parsed = new URL(url, window.location.origin);
       const host = parsed.hostname.toLowerCase();
-      if (host.includes("bunkr.")) {
+      if (host.includes("bunkr")) {
         const mappedHost = Object.entries(BUNKR_HOST_MAP).find(([alias]) => host.endsWith(alias));
         if (mappedHost) {
-          parsed.hostname = host.replace(mappedHost[0], mappedHost[1]);
-        } else {
-          parsed.hostname = host.replace(/bunkr\.[^.]+$/, "bunkr.ws");
+          parsed.hostname = host.replace(new RegExp(`${mappedHost[0]}$`, "i"), mappedHost[1]);
+        } else if (!host.endsWith("bunkr.ws")) {
+          parsed.hostname = host.replace(/bunkr[\w-]*\.[^.]+$/i, "bunkr.ws");
         }
-        if (parsed.pathname.startsWith("/v/")) {
-          parsed.pathname = parsed.pathname.replace("/v/", "/f/");
-        } else if (parsed.pathname.startsWith("/d/")) {
-          parsed.pathname = parsed.pathname.replace("/d/", "/f/");
+        if (parsed.pathname.startsWith("/v/") || parsed.pathname.startsWith("/d/")) {
+          parsed.pathname = parsed.pathname.replace(/\/[vd]\//, "/f/");
         }
       }
       return parsed.toString();
