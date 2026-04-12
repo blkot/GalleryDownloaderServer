@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Gallery Downloader – SimpCity Helper
 // @namespace    https://github.com/xanta/gallerydownloaderserver
-// @version      0.5.0
+// @version      0.6.0
 // @description  Decorate SimpCity threads with Gallery Downloader actions and normalised provider links.
 // @author       You
 // @match        https://simpcity.cr/threads/*
@@ -21,8 +21,34 @@
 (function () {
   "use strict";
 
-  const SUPPORTED_HOSTS = ["pixeldrain", "bunkr", "gofile", "cyberdrop", "redgifs", "saint2"];
-  const SUPPORTED_IFRAME_HOSTS = ["saint2.", "cyberdrop.", "bunkr.", "gofile.", "pixeldrain."];
+  const SUPPORTED_HOSTS = [
+    "pixeldrain",
+    "bunkr",
+    "gofile",
+    "cyberdrop",
+    "cyberfile",
+    "catbox",
+    "mixdrop",
+    "redgifs",
+    "saint2",
+    "turbo",
+    "uploadir",
+    "urlgalleries",
+  ];
+  const SUPPORTED_IFRAME_HOSTS = [
+    "saint2.",
+    "cyberdrop.",
+    "cyberfile.",
+    "bunkr.",
+    "gofile.",
+    "pixeldrain.",
+    "mixdrop.",
+    "turbo.",
+    "redgifs.",
+    "uploadir.",
+    "urlgalleries.",
+    "catbox.",
+  ];
   const BUTTON_CLASS = "gdl-send-button";
   const CONTAINER_CLASS = "gdl-send-container";
   const TITLE_PARAM_KEY = "gdl_title";
