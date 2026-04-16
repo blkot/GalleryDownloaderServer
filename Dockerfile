@@ -18,6 +18,7 @@ COPY . .
 RUN uv pip install --system --no-cache -e .
 
 FROM python:3.13-slim AS runtime
+ARG GALLERY_DL_VERSION=1.31.10
 ENV UV_SYSTEM_PYTHON=1 \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1
@@ -29,6 +30,13 @@ COPY --from=builder /etc/ssl/certs/ /etc/ssl/certs/
 
 WORKDIR /app
 COPY --from=builder /app /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates \
+    && curl -L --fail --output /usr/local/bin/gallery-dl \
+        "https://github.com/mikf/gallery-dl/releases/download/v${GALLERY_DL_VERSION}/gallery-dl.bin" \
+    && chmod 0755 /usr/local/bin/gallery-dl \
+    && apt-get purge -y --auto-remove curl \
+    && rm -rf /var/lib/apt/lists/*
 
 RUN mkdir -p /data/downloads && chown -R app:app /data
 

@@ -10,6 +10,7 @@ from rq.job import Job
 from app.api.security import require_token
 from app.config import settings
 from app.db import session_scope
+from app.media.indexer import enqueue_media_index_job
 from app.models import DownloadCreate, DownloadRead, DownloadStatus
 from app.notifications import notification_manager
 from app.queue import get_queue
@@ -163,6 +164,28 @@ async def cancel_download(download_id: uuid.UUID) -> DownloadRead:
         }
     )
 
+    return record
+
+
+@router.post("/{download_id}/media/reindex", response_model=DownloadRead)
+async def reindex_download_media(
+    download_id: uuid.UUID,
+    force: bool = Query(False, description="Reprocess files even if previews already exist."),
+) -> DownloadRead:
+    with session_scope() as session:
+        repo = DownloadRepository(session)
+        entity = repo.get_entity(download_id)
+        if entity is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Download not found")
+        if entity.status != DownloadStatus.succeeded:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Only succeeded downloads can be reindexed.",
+            )
+        record = repo.reset_media_metadata(download_id)
+        assert record is not None
+
+    enqueue_media_index_job(download_id, force=force)
     return record
 
 

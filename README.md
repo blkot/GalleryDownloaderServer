@@ -11,7 +11,7 @@ A FastAPI-based service that queues gallery-dl jobs and tracks their status via 
 ### Local Development
 
 1. Install [uv](https://github.com/astral-sh/uv) and ensure Python 3.13 is available.
-2. Copy `.env.example` to `.env`, set `GDL_API_TOKEN`, local `GDL_STORAGE_ROOT`, Redis URL, and optionally raise `GDL_JOB_TIMEOUT_SECONDS` (set to `0` to disable the timeout). You can also provide `GDL_GALLERY_DL_EXTRA_ARGS` to tack on gallery-dl CLI switches.
+2. Copy `.env.example` to `.env`, set `GDL_API_TOKEN`, local `GDL_STORAGE_ROOT`, Redis URL, and optionally raise `GDL_JOB_TIMEOUT_SECONDS` (set to `0` to disable the timeout). Install a `gallery-dl` executable locally and point `GDL_GALLERY_DL_BINARY_PATH` at it if it is not already on your `PATH`. You can also provide `GDL_GALLERY_DL_EXTRA_ARGS` to tack on gallery-dl CLI switches.
 3. Install dependencies:
 
 ```bash
@@ -25,7 +25,8 @@ uv sync
 uv run uvicorn app.main:app --host 0.0.0.0 --port 8080
 ```
 
-6. Run the background worker in another terminal:
+6. Run the background worker in another terminal. By default it listens to the `downloads` queue; set `GDL_WORKER_QUEUES=downloads,media`
+   if you want the same process to handle both download and media-index jobs:
 
 ```bash
 uv run python -m app.worker
@@ -45,7 +46,7 @@ volumes:
       device: /share/downloads
 ```
 
-2. Populate `.env` with your token, storage root (inside the container, typically `/data/downloads`), Redis URL, and optional gallery-dl args.
+2. Populate `.env` with your token, storage root (inside the container, typically `/data/downloads`), Redis URL, the `gallery-dl` binary path (defaults to `/usr/local/bin/gallery-dl` in the image), and optional gallery-dl args.
 3. Build and launch:
 
 ```bash
@@ -53,6 +54,17 @@ docker compose up --build
 ```
 
 The API is served at `http://localhost:8080`. Add `Authorization: Bearer <token>` to your requests. Jobs are persisted in SQLite so the API and worker can run in separate containers.
+
+To use a host-managed `gallery-dl` binary instead of the image-bundled one, bind-mount it into the container and set `GDL_GALLERY_DL_BINARY_PATH` to the mounted path. For example:
+
+```yaml
+services:
+  worker:
+    environment:
+      GDL_GALLERY_DL_BINARY_PATH: /opt/bin/gallery-dl
+    volumes:
+      - /share/tools/gallery-dl/gallery-dl:/opt/bin/gallery-dl:ro
+```
 
 ### Making Requests (Postman or curl)
 
@@ -78,9 +90,20 @@ The API is served at `http://localhost:8080`. Add `Authorization: Bearer <token>
 
   Add multiple `url` parameters to send more than one link.
 
+### Media Management
+
+- Every succeeded download automatically enqueues a media-index job (`app.media.indexer.index_download`). Ensure at least
+  one worker is subscribed to the `media` queue (set `GDL_WORKER_QUEUES=downloads,media` or run a dedicated worker).
+- Use `GET /media/{item_id}?variant=thumb|preview|original` to stream the thumbnail/preview/original asset for a
+  `DownloadItem`. Supply `disposition=attachment` if you want a download prompt.
+- To reprocess files, call `POST /downloads/{id}/media/reindex?force=true`. This clears the stored metadata and
+  schedules a fresh media job.
+- For bulk migrations, run `python -m app.media.reindex --all` to enqueue every succeeded download (add `--inline` to
+  run synchronously for small batches).
+
 ### Documentation
 
-See `docs/project-design.md` for the detailed system design and implementation roadmap.
+See `docs/project-design.md` for the system overview and `docs/media-management.md` for the media gallery roadmap.
 
 ### Real-time Notifications
 

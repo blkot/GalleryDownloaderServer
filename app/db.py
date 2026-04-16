@@ -8,6 +8,7 @@ from sqlalchemy import make_url
 from sqlmodel import Session, SQLModel, create_engine
 
 from app.config import settings
+from app.db_migrations import run_migrations
 
 DATABASE_URL = str(settings.database_url)
 url = make_url(DATABASE_URL)
@@ -28,6 +29,7 @@ def init_db() -> None:
     import app.models.entities  # noqa: F401  (ensure models are registered)
 
     SQLModel.metadata.create_all(engine)
+    run_migrations(engine)
 
 
 @contextmanager

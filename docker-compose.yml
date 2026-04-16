@@ -9,8 +9,10 @@ services:
       GDL_REDIS_URL: ${GDL_REDIS_URL:?err}
       GDL_DATABASE_URL: ${GDL_DATABASE_URL:-sqlite:////data/gallery.db}
       GDL_STORAGE_ROOT: ${GDL_STORAGE_ROOT:-/downloads}
+      GDL_GALLERY_DL_BINARY_PATH: ${GDL_GALLERY_DL_BINARY_PATH:-/usr/local/bin/gallery-dl}
       GDL_GALLERY_DL_EXTRA_ARGS: ${GDL_GALLERY_DL_EXTRA_ARGS:-}
       GDL_JOB_TIMEOUT_SECONDS: ${GDL_JOB_TIMEOUT_SECONDS:-0}
+      GDL_MEDIA_JOB_TIMEOUT_SECONDS: ${GDL_MEDIA_JOB_TIMEOUT_SECONDS:-0}
     ports:
       - "8080:8080"
     volumes:
@@ -31,8 +33,11 @@ services:
       GDL_REDIS_URL: ${GDL_REDIS_URL:?err}
       GDL_DATABASE_URL: ${GDL_DATABASE_URL:-sqlite:////data/gallery.db}
       GDL_STORAGE_ROOT: ${GDL_STORAGE_ROOT:-/downloads}
+      GDL_GALLERY_DL_BINARY_PATH: ${GDL_GALLERY_DL_BINARY_PATH:-/usr/local/bin/gallery-dl}
       GDL_GALLERY_DL_EXTRA_ARGS: ${GDL_GALLERY_DL_EXTRA_ARGS:-}
       GDL_JOB_TIMEOUT_SECONDS: ${GDL_JOB_TIMEOUT_SECONDS:-0}
+      GDL_MEDIA_JOB_TIMEOUT_SECONDS: ${GDL_MEDIA_JOB_TIMEOUT_SECONDS:-0}
+      GDL_WORKER_QUEUES: ${GDL_WORKER_QUEUES:-downloads,media}
     volumes:
       - ./data:/data
       - ./config/gallery-dl.json:/etc/gallery-dl/config.json:ro

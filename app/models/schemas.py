@@ -30,6 +30,13 @@ class DownloadItemRead(BaseModel):
     relative_path: str
     file_size: Optional[int] = None
     content_type: Optional[str] = None
+    media_type: Optional[str] = None
+    thumbnail_path: Optional[str] = None
+    preview_path: Optional[str] = None
+    width: Optional[int] = None
+    height: Optional[int] = None
+    duration_seconds: Optional[float] = None
+    processed_at: Optional[datetime] = None
     created_at: datetime
 
 
@@ -44,4 +51,6 @@ class DownloadRead(BaseModel):
     started_at: Optional[datetime] = None
     finished_at: Optional[datetime] = None
     failure_reason: Optional[str] = None
+    media_indexed: bool = False
+    media_indexed_at: Optional[datetime] = None
     items: List[DownloadItemRead] = Field(default_factory=list)

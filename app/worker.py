@@ -10,6 +10,7 @@ from rq import SimpleWorker, Worker
 
 from app.config import settings
 from app.db import init_db, session_scope
+from app.media.indexer import enqueue_media_index_job
 from app.models.schemas import DownloadStatus
 from app.queue import get_queue
 from app.repositories.downloads import DownloadRepository
@@ -66,6 +67,8 @@ def process_download(*, download_id: str, urls: Iterable[str], post_title: Optio
                 finished_at=datetime.utcnow(),
                 output_path=str(result.output_path),
             )
+        if items_payload:
+            enqueue_media_index_job(identifier)
         logger.info("Download %s finished with %d files", download_id, len(items_payload))
     except Exception as exc:  # pragma: no cover - placeholder for comprehensive error handling
         with session_scope() as session:
@@ -83,11 +86,13 @@ def process_download(*, download_id: str, urls: Iterable[str], post_title: Optio
 def run_worker() -> None:
     logging.basicConfig(level=logging.INFO)
     init_db()
-    queue = get_queue()
-    if os.name == "nt":
-        worker = SimpleWorker([queue], connection=queue.connection)
-    else:
-        worker = Worker([queue], connection=queue.connection)
+    queue_names = [name.strip() for name in settings.worker_queues.split(",") if name.strip()]
+    if not queue_names:
+        queue_names = ["downloads"]
+    queues = [get_queue(name) for name in queue_names]
+    connection = queues[0].connection if queues else get_queue().connection
+    worker_cls = SimpleWorker if os.name == "nt" else Worker
+    worker = worker_cls(queues, connection=connection)
     worker.work(with_scheduler=True)
 
 

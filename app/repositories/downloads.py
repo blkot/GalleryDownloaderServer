@@ -35,6 +35,8 @@ class DownloadRepository:
             post_title=post_title,
             requested_at=requested_at,
             status=DownloadStatus.queued,
+            media_indexed=False,
+            media_indexed_at=None,
         )
         self.session.add(entity)
         self.session.flush()
@@ -100,8 +102,7 @@ class DownloadRepository:
             return None
 
         items = self.session.exec(select(DownloadItem).where(DownloadItem.download_id == download_id)).all()
-        for item in items:
-            self.session.delete(item)
+        self._clear_media_fields(items)
 
         entity.status = DownloadStatus.queued
         entity.requested_at = requested_at
@@ -109,6 +110,8 @@ class DownloadRepository:
         entity.finished_at = None
         entity.failure_reason = None
         entity.output_path = None
+        entity.media_indexed = False
+        entity.media_indexed_at = None
 
         self.session.add(entity)
         self.session.commit()
@@ -121,6 +124,22 @@ class DownloadRepository:
             return None
         entity.status = DownloadStatus.cancelled
         entity.finished_at = finished_at
+        self.session.add(entity)
+        self.session.commit()
+        self.session.refresh(entity)
+        return self._to_read(entity)
+
+    def reset_media_metadata(self, download_id: uuid.UUID) -> Optional[DownloadRead]:
+        entity = self.session.exec(select(Download).where(Download.id == download_id)).first()
+        if entity is None:
+            return None
+
+        items = self.session.exec(select(DownloadItem).where(DownloadItem.download_id == download_id)).all()
+        self._clear_media_fields(items)
+
+        entity.media_indexed = False
+        entity.media_indexed_at = None
+
         self.session.add(entity)
         self.session.commit()
         self.session.refresh(entity)
@@ -193,6 +212,8 @@ class DownloadRepository:
             started_at=entity.started_at,
             finished_at=entity.finished_at,
             failure_reason=entity.failure_reason,
+             media_indexed=entity.media_indexed,
+             media_indexed_at=entity.media_indexed_at,
             items=[
                 DownloadItemRead(
                     id=item.id,
@@ -201,8 +222,26 @@ class DownloadRepository:
                     relative_path=item.relative_path,
                     file_size=item.file_size,
                     content_type=item.content_type,
+                    media_type=item.media_type,
+                    thumbnail_path=item.thumbnail_path,
+                    preview_path=item.preview_path,
+                    width=item.width,
+                    height=item.height,
+                    duration_seconds=item.duration_seconds,
+                    processed_at=item.processed_at,
                     created_at=item.created_at,
                 )
                 for item in items
             ],
         )
+
+    def _clear_media_fields(self, items: Iterable[DownloadItem]) -> None:
+        for item in items:
+            item.media_type = None
+            item.thumbnail_path = None
+            item.preview_path = None
+            item.width = None
+            item.height = None
+            item.duration_seconds = None
+            item.processed_at = None
+            self.session.add(item)
