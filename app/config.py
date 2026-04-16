@@ -31,9 +31,17 @@ class Settings(BaseSettings):
     worker_concurrency: Annotated[int, Field(ge=1)] = Field(
         1, description="Number of concurrent jobs a worker process can execute."
     )
+    worker_queues: str = Field(
+        "downloads",
+        description="Comma-separated list of RQ queues processed by this worker instance (e.g. 'downloads,media').",
+    )
     job_timeout_seconds: Optional[int] = Field(
         1800,
         description="Maximum number of seconds a download job may run before timing out. Set to 0 to disable.",
+    )
+    media_job_timeout_seconds: Optional[int] = Field(
+        900,
+        description="Maximum duration, in seconds, for media indexing jobs before timing out. Set to 0 to disable.",
     )
 
     class Config:
@@ -46,12 +54,21 @@ class Settings(BaseSettings):
         """Expand user and environment variables for storage root paths."""
         return Path(value).expanduser().resolve()
 
-    @validator("job_timeout_seconds", pre=True)
-    def normalize_job_timeout(cls, value: Optional[int]) -> Optional[int]:
-        """Interpret falsy values as disabling timeouts."""
+    @staticmethod
+    def _normalize_timeout(value: Optional[int]) -> Optional[int]:
         if value in (None, "", "None", 0, "0"):
             return None
         return int(value)
+
+    @validator("job_timeout_seconds", pre=True)
+    def normalize_job_timeout(cls, value: Optional[int]) -> Optional[int]:
+        """Interpret falsy values as disabling download job timeouts."""
+        return cls._normalize_timeout(value)
+
+    @validator("media_job_timeout_seconds", pre=True)
+    def normalize_media_job_timeout(cls, value: Optional[int]) -> Optional[int]:
+        """Interpret falsy values as disabling media job timeouts."""
+        return cls._normalize_timeout(value)
 
 
 @lru_cache(maxsize=1)

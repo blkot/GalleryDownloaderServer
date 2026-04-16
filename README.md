@@ -25,7 +25,8 @@ uv sync
 uv run uvicorn app.main:app --host 0.0.0.0 --port 8080
 ```
 
-6. Run the background worker in another terminal:
+6. Run the background worker in another terminal. By default it listens to the `downloads` queue; set `GDL_WORKER_QUEUES=downloads,media`
+   if you want the same process to handle both download and media-index jobs:
 
 ```bash
 uv run python -m app.worker
@@ -78,9 +79,20 @@ The API is served at `http://localhost:8080`. Add `Authorization: Bearer <token>
 
   Add multiple `url` parameters to send more than one link.
 
+### Media Management
+
+- Every succeeded download automatically enqueues a media-index job (`app.media.indexer.index_download`). Ensure at least
+  one worker is subscribed to the `media` queue (set `GDL_WORKER_QUEUES=downloads,media` or run a dedicated worker).
+- Use `GET /media/{item_id}?variant=thumb|preview|original` to stream the thumbnail/preview/original asset for a
+  `DownloadItem`. Supply `disposition=attachment` if you want a download prompt.
+- To reprocess files, call `POST /downloads/{id}/media/reindex?force=true`. This clears the stored metadata and
+  schedules a fresh media job.
+- For bulk migrations, run `python -m app.media.reindex --all` to enqueue every succeeded download (add `--inline` to
+  run synchronously for small batches).
+
 ### Documentation
 
-See `docs/project-design.md` for the detailed system design and implementation roadmap.
+See `docs/project-design.md` for the system overview and `docs/media-management.md` for the media gallery roadmap.
 
 ### Real-time Notifications
 

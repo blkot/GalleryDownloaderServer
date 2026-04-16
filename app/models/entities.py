@@ -23,6 +23,8 @@ class Download(SQLModel, table=True):
     started_at: Optional[datetime] = Field(default=None, nullable=True)
     finished_at: Optional[datetime] = Field(default=None, nullable=True)
     failure_reason: Optional[str] = Field(default=None, nullable=True)
+    media_indexed: bool = Field(default=False, nullable=False)
+    media_indexed_at: Optional[datetime] = Field(default=None, nullable=True)
 
     items: List["DownloadItem"] = Relationship(
         back_populates="download",
@@ -43,6 +45,13 @@ class DownloadItem(SQLModel, table=True):
     relative_path: str
     file_size: Optional[int] = None
     content_type: Optional[str] = None
+    media_type: Optional[str] = Field(default=None, nullable=True)
+    thumbnail_path: Optional[str] = Field(default=None, nullable=True)
+    preview_path: Optional[str] = Field(default=None, nullable=True)
+    width: Optional[int] = Field(default=None, nullable=True)
+    height: Optional[int] = Field(default=None, nullable=True)
+    duration_seconds: Optional[float] = Field(default=None, nullable=True)
+    processed_at: Optional[datetime] = Field(default=None, nullable=True)
     created_at: datetime = Field(default_factory=datetime.utcnow, nullable=False)
 
     download: Optional[Download] = Relationship(back_populates="items")
