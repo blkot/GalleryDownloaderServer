@@ -19,9 +19,15 @@ class DownloadResult:
 class DownloadManager:
     """Lightweight wrapper around the gallery-dl CLI."""
 
-    def __init__(self, storage_root: Optional[Path] = None, extra_args: Optional[List[str]] = None) -> None:
+    def __init__(
+        self,
+        storage_root: Optional[Path] = None,
+        extra_args: Optional[List[str]] = None,
+        binary_path: Optional[str] = None,
+    ) -> None:
         root = storage_root or settings.storage_root
         self.storage = FileSystemStorage(root)
+        self.binary_path = binary_path or settings.gallery_dl_binary_path
         self.extra_args = (
             extra_args if extra_args is not None else self._parse_extra_args(settings.gallery_dl_extra_args)
         )
@@ -44,7 +50,7 @@ class DownloadManager:
         destination.mkdir(parents=True, exist_ok=True)
 
         command: List[str] = [
-            "gallery-dl",
+            self.binary_path,
             "--dest",
             str(destination),
         ]
@@ -57,7 +63,13 @@ class DownloadManager:
 
         command.extend(urls)
         # TODO: capture progress and structured metadata once gallery-dl exposes hooks.
-        subprocess.run(command, check=True)
+        try:
+            subprocess.run(command, check=True)
+        except FileNotFoundError as exc:
+            raise RuntimeError(
+                f"gallery-dl executable not found: {self.binary_path}. "
+                "Set GDL_GALLERY_DL_BINARY_PATH to the installed binary location."
+            ) from exc
 
         files = list(destination.rglob("*"))
         relevant_files = [path for path in files if path.is_file()]

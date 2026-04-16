@@ -19,6 +19,10 @@ class Settings(BaseSettings):
     database_url: AnyUrl = Field("sqlite:///./data/gallery.db", description="SQL database URL.")
 
     storage_root: Path = Field(Path("/data/downloads"), description="Base path for downloaded assets.")
+    gallery_dl_binary_path: str = Field(
+        "gallery-dl",
+        description="Path or command name for the gallery-dl executable used by worker jobs.",
+    )
     gallery_dl_config_path: Path = Field(
         Path("/etc/gallery-dl/config.json"),
         description="Optional path to a gallery-dl configuration file mounted into the container.",
