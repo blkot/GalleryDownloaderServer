@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Gallery Downloader – Provider Helper
 // @namespace    https://github.com/xanta/gallerydownloaderserver
-// @version      0.5.0
+// @version      0.5.1
 // @description  Offer a floating “Send to Downloader” button on supported gallery-dl provider domains.
 // @author       You
 // @homepageURL  https://github.com/blkot/GalleryDownloaderServer

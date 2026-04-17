@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Gallery Downloader – SimpCity Helper
 // @namespace    https://github.com/xanta/gallerydownloaderserver
-// @version      0.6.0
+// @version      0.6.1
 // @description  Decorate SimpCity threads with Gallery Downloader actions and normalised provider links.
 // @author       You
 // @homepageURL  https://github.com/blkot/GalleryDownloaderServer
@@ -1149,10 +1149,100 @@
     "bunkr.ru": "bunkr.ws",
   };
   const PIXELDRAIN_HOST_ALIASES = ["pixeldrain.net", "pixeldra.in"];
+  const REDIRECT_TARGET_PARAM_KEYS = ["to", "url", "u", "target", "dest", "destination", "link"];
+
+  function decodeBase64Value(value) {
+    const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+    const remainder = normalized.length % 4;
+    const padded = remainder === 0 ? normalized : normalized.padEnd(normalized.length + (4 - remainder), "=");
+    return atob(padded);
+  }
+
+  // SimpCity wraps outbound links in /redirect URLs; resolve them before matching providers.
+  function extractRedirectTarget(url) {
+    try {
+      const parsed = new URL(url, window.location.origin);
+      const path = parsed.pathname.toLowerCase();
+      if (path !== "/redirect" && !path.startsWith("/redirect/")) {
+        return parsed.toString();
+      }
+
+      const mode = (parsed.searchParams.get("m") || "").toLowerCase();
+      for (const key of REDIRECT_TARGET_PARAM_KEYS) {
+        const value = parsed.searchParams.get(key);
+        if (!value) {
+          continue;
+        }
+
+        let decoded = value;
+        if (mode === "b64") {
+          decoded = decodeBase64Value(value);
+        } else {
+          try {
+            decoded = decodeURIComponent(value);
+          } catch (_) {
+            decoded = value;
+          }
+        }
+
+        return new URL(decoded, window.location.origin).toString();
+      }
+
+      return parsed.toString();
+    } catch (error) {
+      console.debug("Failed to extract redirect target", error, url);
+      return url;
+    }
+  }
+
+  function resolveProviderUrl(url) {
+    if (!url) {
+      return null;
+    }
+    return extractRedirectTarget(url);
+  }
+
+  function getAnchorUrl(anchor) {
+    if (!anchor) {
+      return null;
+    }
+
+    const candidates = [
+      anchor.getAttribute("data-proxy-href"),
+      anchor.dataset?.proxyHref,
+      anchor.getAttribute("data-url"),
+      anchor.dataset?.url,
+      anchor.getAttribute("href"),
+      anchor.href,
+    ].filter(Boolean);
+
+    for (const candidate of candidates) {
+      const resolved = resolveProviderUrl(candidate);
+      if (resolved) {
+        return resolved;
+      }
+    }
+
+    return null;
+  }
+
+  function isSupportedProviderUrl(url) {
+    if (!url) {
+      return false;
+    }
+
+    try {
+      const resolved = resolveProviderUrl(url);
+      const host = new URL(resolved, window.location.origin).hostname.toLowerCase();
+      return SUPPORTED_HOSTS.some((entry) => host.includes(entry));
+    } catch (_) {
+      return false;
+    }
+  }
 
   function normalizeProviderUrl(url) {
     try {
-      const parsed = new URL(url, window.location.origin);
+      const parsed = new URL(resolveProviderUrl(url) || url, window.location.origin);
       const host = parsed.hostname.toLowerCase();
       const pixeldrainAlias = PIXELDRAIN_HOST_ALIASES.find(
         (alias) => host === alias || host.endsWith(`.${alias}`)
@@ -1276,12 +1366,15 @@
 
   function shouldDecorate(node) {
     const host = node.getAttribute("data-host") || "";
-    return SUPPORTED_HOSTS.some((entry) => host.includes(entry));
+    if (SUPPORTED_HOSTS.some((entry) => host.includes(entry))) {
+      return true;
+    }
+
+    return isSupportedProviderUrl(getLinkFromBlock(node));
   }
 
   function shouldDecorateAnchor(anchor) {
-    const href = anchor.getAttribute("href") || "";
-    return SUPPORTED_HOSTS.some((entry) => href.includes(entry));
+    return isSupportedProviderUrl(getAnchorUrl(anchor));
   }
 
   function shouldDecorateIframe(iframe) {
@@ -1291,12 +1384,30 @@
 
   function getLinkFromBlock(block) {
     const anchor = block.querySelector("a[href]");
-    return anchor ? anchor.href : null;
+    if (anchor) {
+      return getAnchorUrl(anchor);
+    }
+
+    const candidates = [
+      block.getAttribute("data-proxy-href"),
+      block.dataset?.proxyHref,
+      block.getAttribute("data-url"),
+      block.dataset?.url,
+    ].filter(Boolean);
+
+    for (const candidate of candidates) {
+      const resolved = resolveProviderUrl(candidate);
+      if (resolved) {
+        return resolved;
+      }
+    }
+
+    return null;
   }
 
   function enforceBlockUrl(block, anchor, threadTitle) {
     if (!anchor) return;
-    const baseUrl = stripTitleParam(anchor.href || "");
+    const baseUrl = stripTitleParam(getAnchorUrl(anchor) || "");
     const titledUrl = attachTitleParam(baseUrl, threadTitle);
     if (anchor.href !== titledUrl) {
       anchor.href = titledUrl;
@@ -1452,8 +1563,8 @@
       return;
     }
 
-    const rawUrl = anchor.getAttribute("href");
-   if (!rawUrl) return;
+    const rawUrl = getAnchorUrl(anchor);
+    if (!rawUrl) return;
 
     const baseUrl = stripTitleParam(rawUrl);
     registerTrackedLink(baseUrl, threadTitle, anchor);
