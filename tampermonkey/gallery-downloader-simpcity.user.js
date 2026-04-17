@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Gallery Downloader – SimpCity Helper
 // @namespace    https://github.com/xanta/gallerydownloaderserver
-// @version      0.6.0
+// @version      0.6.1
 // @description  Decorate SimpCity threads with Gallery Downloader actions and normalised provider links.
 // @author       You
 // @homepageURL  https://github.com/blkot/GalleryDownloaderServer
