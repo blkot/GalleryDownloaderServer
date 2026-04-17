@@ -27,6 +27,7 @@
 
   const SUPPORTED_HOSTS = [
     "pixeldrain",
+    "pixeldra.in",
     "bunkr",
     "gofile",
     "cyberdrop",
@@ -46,6 +47,7 @@
     "bunkr.",
     "gofile.",
     "pixeldrain.",
+    "pixeldra.in",
     "mixdrop.",
     "turbo.",
     "redgifs.",
@@ -1146,11 +1148,18 @@
     "bunkr.site": "bunkr.ws",
     "bunkr.ru": "bunkr.ws",
   };
+  const PIXELDRAIN_HOST_ALIASES = ["pixeldrain.net", "pixeldra.in"];
 
   function normalizeProviderUrl(url) {
     try {
       const parsed = new URL(url, window.location.origin);
       const host = parsed.hostname.toLowerCase();
+      const pixeldrainAlias = PIXELDRAIN_HOST_ALIASES.find(
+        (alias) => host === alias || host.endsWith(`.${alias}`)
+      );
+      if (pixeldrainAlias) {
+        parsed.hostname = host.replace(new RegExp(`${pixeldrainAlias.replace(/\./g, "\\.")}$`, "i"), "pixeldrain.com");
+      }
       if (host.includes("bunkr")) {
         const mapped = Object.entries(BUNKR_HOST_MAP).find(([legacy]) => host.endsWith(legacy));
         if (mapped) {

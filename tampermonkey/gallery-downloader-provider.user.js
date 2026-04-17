@@ -134,11 +134,18 @@
     "bunkr.site": "bunkr.ws",
     "bunkr.ru": "bunkr.ws",
   };
+  const PIXELDRAIN_HOST_ALIASES = ["pixeldrain.net", "pixeldra.in"];
 
   function normalizeProviderUrl(url) {
     try {
       const parsed = new URL(url, window.location.origin);
       const host = parsed.hostname.toLowerCase();
+      const pixeldrainAlias = PIXELDRAIN_HOST_ALIASES.find(
+        (alias) => host === alias || host.endsWith(`.${alias}`)
+      );
+      if (pixeldrainAlias) {
+        parsed.hostname = host.replace(new RegExp(`${pixeldrainAlias.replace(/\./g, "\\.")}$`, "i"), "pixeldrain.com");
+      }
       if (host.includes("bunkr")) {
         const mappedHost = Object.entries(BUNKR_HOST_MAP).find(([alias]) => host.endsWith(alias));
         if (mappedHost) {
